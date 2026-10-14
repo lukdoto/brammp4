@@ -20,7 +20,7 @@ export async function readMarker(dir: string): Promise<Marker | null> {
 export async function writeMarker(dir: string, label: string): Promise<Marker> {
   const m: Marker = { id: randomUUID(), label, createdAt: new Date().toISOString() }
   const file = join(dir, MARKER)
-  await writeFile(file, JSON.stringify(m, null, 2), 'utf8')
+  await writeFile(file, JSON.stringify(m, null, 2), { encoding: 'utf8', flag: 'wx' })
   if (process.platform === 'win32') {
     await new Promise<void>((resolve) => execFile('attrib', ['+h', file], { windowsHide: true }, () => resolve()))
   }

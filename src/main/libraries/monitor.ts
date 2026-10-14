@@ -19,9 +19,13 @@ export class LibraryMonitor {
     this.running = true
     try {
       for (const lib of this.opts.list()) {
-        const r = await this.opts.resolve(lib)
-        const changed = r.status !== lib.status || (r.status === 'online' && r.rootPath !== lib.rootPath)
-        if (changed) this.opts.onChange(lib.id, r)
+        try {
+          const r = await this.opts.resolve(lib)
+          const changed = r.status !== lib.status || (r.status === 'online' && r.rootPath !== lib.rootPath)
+          if (changed) this.opts.onChange(lib.id, r)
+        } catch (err) {
+          console.error(`LibraryMonitor: falha ao verificar a biblioteca ${lib.id}`, err)
+        }
       }
     } finally {
       this.running = false
@@ -29,11 +33,13 @@ export class LibraryMonitor {
   }
 
   start(): void {
+    if (this.timer) return
     void this.tick()
     this.timer = setInterval(() => void this.tick(), this.opts.intervalMs)
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer)
+    this.timer = undefined
   }
 }

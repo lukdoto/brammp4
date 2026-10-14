@@ -12,6 +12,12 @@ describe('marker', () => {
     expect(m.label).toBe('HD Séries')
     expect(await readMarker(dir)).toEqual(m)
   })
+  it('não sobrescreve marcador existente', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brammp4-'))
+    const first = await writeMarker(dir, 'A')
+    await expect(writeMarker(dir, 'B')).rejects.toThrow()
+    expect(await readMarker(dir)).toEqual(first)
+  })
   it('pasta inexistente (disco desconectado) retorna null', async () => {
     expect(await readMarker('Q:\\nao\\existe')).toBeNull()
   })

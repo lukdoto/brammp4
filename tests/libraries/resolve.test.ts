@@ -13,6 +13,9 @@ describe('resolveLibrary', () => {
   it('encontra a mesma pasta em outra letra', async () => {
     expect(await resolveLibrary(lib, { readMarker: fakeFs({ 'G:\\Videos\\Series': 'abc' }) })).toEqual({ status: 'online', rootPath: 'G:\\Videos\\Series' })
   })
+  it('respeita a lista de letras informada', async () => {
+    expect(await resolveLibrary(lib, { letters: ['F', 'G'], readMarker: fakeFs({ 'G:\\Videos\\Series': 'abc' }) })).toEqual({ status: 'online', rootPath: 'G:\\Videos\\Series' })
+  })
   it('ignora pasta com mesmo caminho mas outro ID (outro disco)', async () => {
     expect(await resolveLibrary(lib, { readMarker: fakeFs({ 'F:\\Videos\\Series': 'outro' }) })).toEqual({ status: 'offline' })
   })
