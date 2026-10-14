@@ -1,0 +1,14 @@
+node_modules/
+dist/
+out/
+release/
+.vite/
+*.log
+.env
+.env.*
+!.env.example
+.remember/
+.DS_Store
+Thumbs.db
+# binários do mpv baixados localmente
+vendor/mpv/
