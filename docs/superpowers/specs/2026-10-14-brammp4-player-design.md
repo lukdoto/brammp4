@@ -19,6 +19,12 @@ Critérios de sucesso da v1:
 6. Conectar e desconectar qualquer um dos dois HDs a qualquer momento sem perder progresso nem duplicar títulos.
 7. O progresso tem backup na conta Google do usuário e pode ser restaurado num notebook novo.
 8. Assistir não depende de internet. A internet só é usada para baixar metadados e fazer o backup.
+9. Instalação num notebook novo a partir do GitHub com um único instalador que já contém tudo
+   (mpv, uosc, ffprobe, ffmpeg); nenhum pré-requisito instalado à mão. Um agente (Claude Code)
+   consegue instalar seguindo o README sem tomar decisões.
+10. O usuário aponta, uma única vez, a pasta do catálogo dentro do disco removível; o app lembra esse
+    endereço e, a cada vez que o disco é reconectado, verifica se a pasta está acessível e atualiza o catálogo.
+11. Legendas guardadas nas pastas (ao lado do vídeo ou em subpastas) aparecem como opção no painel de play.
 
 Fora do escopo da v1, com base preparada para depois: sincronização entre vários aparelhos,
 perfis por pessoa, transcodificação, streaming para outros dispositivos.
@@ -35,6 +41,7 @@ perfis por pessoa, transcodificação, streaming para outros dispositivos.
 | Banco local | SQLite (better-sqlite3, modo WAL) | Arquivo único, sem servidor, gravação segura contra desligamento abrupto |
 | Metadados | TMDB com cache em disco | Capas e sinopses grátis para uso pessoal; offline usa o cache |
 | Backup | Google Drive `appDataFolder` (escopo `drive.appdata`) | Sem servidor próprio; arquivo invisível ao usuário e isolado de outros apps |
+| Distribuição | electron-builder (instalador NSIS) publicado em GitHub Releases por GitHub Actions | Um `.exe` com tudo dentro; o notebook não precisa de Node, git nem ferramentas de build |
 
 Alternativas descartadas: player HTML5 (não toca x265/DTS de forma confiável), Tauri (exige Rust),
 libmpv embutido na janela (complexo e com plugin pouco testado; pode ser uma evolução futura,
@@ -47,8 +54,8 @@ apenas por uma API explícita exposta via `preload` + `contextBridge`.
 
 | Componente | Responsabilidade | Depende de |
 |---|---|---|
-| `drives` | Detecta HDs conectados (varredura das letras a cada 3 s procurando `.brammp4.json`), registra HDs novos | sistema de arquivos |
-| `scanner` | Percorre um HD, reconhece episódios e filmes pelo nome, roda ffprobe nos arquivos novos ou alterados | `drives`, `db`, `parser` |
+| `libraries` | Cadastra a pasta do catálogo escolhida pelo usuário; a cada 3 s verifica se cada biblioteca está acessível (conectada/desconectada) | sistema de arquivos |
+| `scanner` | Percorre uma biblioteca, reconhece episódios, filmes e legendas, roda ffprobe nos vídeos novos ou alterados | `libraries`, `db`, `parser` |
 | `parser` | Função pura: caminho do arquivo para `{tipo, nome, ano, temporada, episódio, versão}` | nada |
 | `metadata` | Associa títulos ao TMDB, baixa capas para o cache, preenche nomes e sinopses de episódios | `db`, rede |
 | `db` | Esquema SQLite, migrações e consultas | better-sqlite3 |
@@ -70,20 +77,23 @@ Princípio: o progresso pertence ao episódio, nunca ao arquivo nem ao HD.
   - ainda sem TMDB: `local:<nome-normalizado>:S01E03` ou `local:<nome-normalizado>-<ano>`
   - quando um item `local:` for associado ao TMDB, a chave é migrada no banco e o progresso vai junto.
 - Um item pode ter zero, um ou vários arquivos, em qualquer HD.
-- Cada HD é identificado por um ID único gravado no arquivo `.brammp4.json` na raiz
-  (`{ "id": "<uuid>", "label": "HD Séries", "createdAt": "..." }`). O app só varre discos com esse marcador.
-- O caminho de cada arquivo é guardado relativo à raiz do HD; a letra da unidade nunca é persistida como identidade.
+- Cada biblioteca (a pasta do catálogo escolhida pelo usuário dentro de um disco) é identificada por um ID único
+  gravado no arquivo `.brammp4.json` dentro dessa pasta
+  (`{ "id": "<uuid>", "label": "HD Séries", "createdAt": "..." }`).
+- O endereço completo escolhido (ex.: `E:\Videos\Series`) é guardado e é o primeiro lugar verificado,
+  mas não é a identidade: se a letra mudar, o marcador é procurado no mesmo caminho em outras letras.
+- O caminho de cada arquivo é guardado relativo à pasta da biblioteca.
 
 Consequências: trocar a letra da unidade, mover uma série entre HDs ou ter cópias nos dois HDs não afeta o progresso.
 
 ## 5. Modelo de dados (SQLite)
 
 ```
-drives      (id TEXT PK, label, last_mount TEXT, last_seen_at)
+libraries   (id TEXT PK, label, root_path TEXT, status 'online'|'offline', last_seen_at, last_scan_at)
 titles      (id INTEGER PK, kind 'movie'|'series', tmdb_id, name, year, overview,
              poster_cache, backdrop_cache, matched_at)
 items       (key TEXT PK, title_id FK, season, episode, name, overview, runtime_s)
-files       (id INTEGER PK, item_key FK, drive_id FK, rel_path, size, mtime,
+files       (id INTEGER PK, item_key FK, library_id FK, rel_path, size, mtime,
              duration_s, width, height, video_codec, probed_at, missing INTEGER)
 tracks      (file_id FK, stream_index, type 'audio'|'sub', lang, title, codec,
              is_default, external_path)
@@ -107,17 +117,49 @@ Padrões aceitos, em ordem de prioridade:
 
 Versão (para o seletor): resolução e codec tirados do ffprobe; o nome do arquivo só serve como dica.
 Arquivo que não se encaixa em nenhum padrão vai para "Não identificados", onde o usuário associa manualmente uma vez.
-Extensões consideradas: `.mkv .mp4 .avi .m4v .mov .wmv .ts .webm`. Legendas externas: `.srt .ass .ssa .vtt`
-com o mesmo nome-base (ex.: `S01E03.pt-BR.srt`).
+Extensões de vídeo consideradas: `.mkv .mp4 .avi .m4v .mov .wmv .ts .webm`.
 
-## 7. HDs: conectar e desconectar
+### Legendas externas
 
-- A cada 3 s o app confere as letras `A:` a `Z:` procurando `.brammp4.json`.
-- HD conhecido conectado: atualiza `last_mount` e roda varredura incremental (ffprobe só em arquivos novos ou com tamanho/data alterados).
-- HD novo: aparece em Configurações > HDs; o usuário dá um apelido e o app grava o marcador.
-- HD desconectado: itens continuam no catálogo, com progresso, acinzentados com "conecte <apelido>".
-- Mesmo item nos dois HDs: as duas cópias aparecem no seletor de versão. Padrão: maior resolução disponível.
-- Arquivo que sumiu de um HD conectado: marcado `missing`; o item continua existindo enquanto houver progresso ou outra cópia.
+Extensões: `.srt .ass .ssa .vtt .sub/.idx`. Uma legenda é associada a um vídeo quando, em ordem:
+
+1. tem o mesmo nome-base do vídeo, com ou sem sufixo de idioma (`Nome.S01E03.srt`, `Nome.S01E03.pt-BR.srt`, `Nome.S01E03.por.forced.srt`);
+2. está numa subpasta de legendas (`Subs/`, `Legendas/`, `Subtitles/`) ao lado do vídeo, com o mesmo nome-base
+   ou dentro de uma pasta com o nome do vídeo (`Subs/Nome.S01E03/2_Portuguese.srt`);
+3. tem o mesmo código de episódio (`S01E03`) na mesma pasta ou numa subpasta de legendas.
+
+Idioma: tirado do sufixo ou do nome do arquivo (`pt-BR`, `por`, `pob`, `Portuguese`, `en`, `eng`, `English` etc.);
+se não houver, aparece como "Desconhecido (nome do arquivo)". Marcadores `forced` e `sdh` viram etiquetas.
+Legendas encontradas são gravadas em `tracks` com `external_path` e aparecem no painel de play junto com as embutidas,
+indicadas como "(arquivo)". Legenda que não casa com nenhum vídeo fica registrada e pode ser associada manualmente.
+
+## 7. Bibliotecas: escolher a pasta, conectar e desconectar
+
+Cadastro (feito uma vez por pasta):
+
+1. Primeira abertura do app, ou Configurações > Bibliotecas > "Adicionar pasta".
+2. Abre o seletor de pastas nativo do Windows; o usuário escolhe a pasta do catálogo dentro do disco removível
+   (ex.: `E:\Videos\Series`). Pode haver várias bibliotecas, por exemplo uma por HD ou uma para séries e outra para filmes.
+3. O usuário dá um apelido ("HD Séries"). O app grava `.brammp4.json` dentro da pasta e guarda o endereço.
+4. Varredura completa inicial com barra de progresso ("312 de 540 arquivos"); ao terminar, mostra um resumo:
+   séries, temporadas, episódios, filmes, legendas encontradas e quantos ficaram em "Não identificados".
+
+Verificação de conexão (a cada 3 s, e ao abrir o app):
+
+1. Testa se o endereço guardado existe e contém o `.brammp4.json` com o mesmo ID. Se sim: biblioteca `online`.
+2. Se não: procura o mesmo caminho sem a letra (`\Videos\Series`) nas outras letras `D:` a `Z:`. Achou com o mesmo ID:
+   atualiza o endereço guardado e fica `online`. Isso cobre o caso de o Windows dar outra letra ao disco.
+3. Se não encontrou: `offline`.
+
+Na transição `offline` para `online`: varredura incremental (só lê com ffprobe vídeos novos ou com tamanho/data alterados;
+legendas são sempre reavaliadas por serem baratas). Reconectar leva segundos.
+
+Comportamento no catálogo:
+
+- Biblioteca offline: itens continuam visíveis, com progresso, acinzentados com "conecte <apelido>".
+- Mesmo item em duas bibliotecas: as duas cópias aparecem no seletor de versão. Padrão: maior resolução disponível.
+- Arquivo que sumiu de uma biblioteca online: marcado `missing`; o item continua existindo enquanto houver progresso ou outra cópia.
+- Pasta encontrada mas sem o marcador (ex.: o usuário apagou o arquivo oculto): o app pergunta se é a mesma biblioteca antes de recriar.
 
 ## 8. Reprodução e progresso
 
@@ -192,7 +234,8 @@ Regras:
 2. **Título:** fundo, sinopse, seletor de temporada, lista de episódios com `S01E03`, nome, duração e barra de progresso.
 3. **Painel de play:** seletores de áudio, legenda (inclui "Desligada") e versão (só quando houver mais de uma);
    botões "Continuar de 30:34" e "Começar do início".
-4. **Configurações:** HDs (apelido, status, revarrer), chave TMDB, conta Google e backup, caminho do mpv.
+4. **Configurações:** Bibliotecas (adicionar pasta, apelido, endereço, status online/offline, revarrer), chave TMDB,
+   conta Google e backup.
 5. **Não identificados:** associar arquivo a título, temporada e episódio.
 
 ## 12. Tratamento de erros
@@ -200,8 +243,8 @@ Regras:
 | Situação | Comportamento |
 |---|---|
 | HD desconectado durante o vídeo | mpv encerra; o app grava a última posição e avisa "HD desconectado" |
-| Arquivo não encontrado ao dar play | Revarre aquele HD; se continuar faltando, mostra outras versões ou o aviso |
-| mpv ausente | Tela de configuração indicando o caminho ou a instalação |
+| Arquivo não encontrado ao dar play | Revarre aquela biblioteca; se continuar faltando, mostra outras versões ou o aviso |
+| mpv ou ffprobe ausente na instalação | Não deveria ocorrer (vão dentro do instalador); se ocorrer, tela de erro pedindo reinstalação |
 | ffprobe falha num arquivo | Arquivo continua reproduzível; faixas aparecem como "desconhecidas" |
 | TMDB fora do ar ou sem internet | Usa o cache; tenta de novo depois, sem mensagem bloqueante |
 | Token Google expirado ou revogado | Banner "Reconectar conta Google"; o progresso local continua intacto |
@@ -216,17 +259,55 @@ Regras:
 - Manual de ponta a ponta antes de cada marco: desconectar o HD durante o vídeo, fechar o app à força,
   trocar a letra da unidade.
 
-## 14. Marcos
+## 14. Instalação e distribuição
 
-1. **M1, Catálogo local:** estrutura do projeto, `db`, `parser`, `drives`, `scanner`, telas Início e Título sem capas.
+Princípio: quem instala não monta nada. Todas as dependências vão dentro do instalador.
+
+Conteúdo do instalador (`brammp4-Setup-<versão>.exe`, NSIS, instalação por usuário, sem pedir administrador):
+
+- o app Electron (Node e Chromium já embutidos);
+- `resources/bin/mpv.exe` (build portátil para Windows x64);
+- `resources/bin/ffprobe.exe` e `ffmpeg.exe` (builds estáticos);
+- `resources/mpv-config/` com o uosc e o `mpv.conf` do app.
+
+Os binários não ficam no git. O script `scripts/fetch-binaries.mjs` baixa versões fixadas (URL + SHA-256 conferido)
+para `vendor/` antes do empacotamento; o mesmo script é usado em desenvolvimento.
+
+Publicação: um workflow do GitHub Actions (`windows-latest`) roda testes, baixa os binários, gera o instalador
+e o anexa a uma GitHub Release quando uma tag `v*` é criada. Cada marco gera uma release instalável.
+
+Instalação no notebook (escrita no README para pessoa ou agente seguir sem decisões):
+
+```
+gh auth login                      # o repositório é privado
+gh release download --repo lukdoto/brammp4 --pattern "brammp4-Setup-*.exe" --dir $env:TEMP
+& "$env:TEMP\brammp4-Setup-<versão>.exe" /S   # instalação silenciosa
+```
+
+Depois da instalação: atalho no Menu Iniciar e na área de trabalho. A primeira abertura leva ao cadastro da pasta do catálogo (seção 7).
+Atualização: repetir os mesmos comandos com a release nova; dados do usuário (banco, cache, tokens) ficam em
+`%APPDATA%\brammp4` e não são apagados.
+
+Segredos: a chave do TMDB e a conta Google são informadas na primeira execução, dentro do app; nada sensível
+vai para o repositório ou para o instalador, com exceção do client ID OAuth do Google para app desktop, que o
+próprio Google não trata como segredo.
+
+## 15. Marcos
+
+Cada marco termina com uma release instalável pelo processo da seção 14.
+
+1. **M1, Catálogo local instalável:** estrutura do projeto, pipeline de release com binários embutidos, `db`, `parser`
+   (vídeos e legendas), `libraries` com seletor de pasta e verificação de conexão, `scanner`, telas Início e Título sem capas.
 2. **M2, Reprodução e progresso:** `player` com mpv + uosc, painel de play, gravação de progresso e barras.
 3. **M3, Metadados:** TMDB, cache de capas, tela Não identificados.
 4. **M4, Backup:** login Google, exportação, mescla e restauração.
 5. **M5, Acabamento:** instalador, ícone, atalhos de teclado, tela Sobre.
 
-## 15. Pontos a confirmar antes ou durante a implementação
+## 16. Pontos a confirmar antes ou durante a implementação
 
 - Se o escopo `drive.appdata` é classificado pelo Google como sensível, e o efeito disso no aviso de "app não verificado"
   e na validade do refresh token enquanto o projeto do Google Cloud estiver em modo "Teste" (há relatos de expiração em 7 dias).
-- Distribuição do mpv: baixar uma build portátil para `vendor/mpv` num script de setup, ou exigir instalação pelo usuário.
+- Fontes exatas e versões fixadas das builds portáteis do mpv e do ffmpeg para Windows, e as licenças (GPL/LGPL)
+  que acompanham os binários no instalador; para uso pessoal não há restrição prática, mas os textos de licença vão junto.
+- Se o repositório continua privado (exige `gh auth login` no notebook) ou vira público (download direto, sem login).
 - Termos atuais da API do TMDB para uso pessoal não comercial.
