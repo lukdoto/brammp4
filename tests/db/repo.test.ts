@@ -5,7 +5,7 @@ import * as repo from '../../src/main/db/repo'
 let db: Db
 beforeEach(() => {
   db = openDatabase(':memory:')
-  repo.upsertLibrary(db, { id: 'lib1', label: 'HD Séries', rootPath: 'E:\Videos\Series' })
+  repo.upsertLibrary(db, { id: 'lib1', label: 'HD Séries', rootPath: 'E:\\Videos\\Series' })
 })
 
 function addEpisode(code: string, relPath: string, libraryId = 'lib1') {
@@ -18,7 +18,7 @@ function addEpisode(code: string, relPath: string, libraryId = 'lib1') {
 describe('repo', () => {
   it('migra e lista bibliotecas', () => {
     expect(repo.listLibraries(db)).toEqual([
-      { id: 'lib1', label: 'HD Séries', rootPath: 'E:\Videos\Series', status: 'online', lastScanAt: undefined }
+      { id: 'lib1', label: 'HD Séries', rootPath: 'E:\\Videos\\Series', status: 'online', lastScanAt: undefined }
     ])
   })
 
@@ -66,8 +66,8 @@ describe('repo', () => {
   })
 
   it('setLibraryStatus atualiza o endereço quando a letra muda', () => {
-    repo.setLibraryStatus(db, 'lib1', 'online', 'F:\Videos\Series')
-    expect(repo.listLibraries(db)[0]!.rootPath).toBe('F:\Videos\Series')
+    repo.setLibraryStatus(db, 'lib1', 'online', 'F:\\Videos\\Series')
+    expect(repo.listLibraries(db)[0]!.rootPath).toBe('F:\\Videos\\Series')
   })
 
   it('resumo da biblioteca', () => {

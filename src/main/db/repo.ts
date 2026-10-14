@@ -96,6 +96,7 @@ export function replaceExternalSubs(db: Db, fileId: number, subs: ExternalSub[])
   for (const s of subs) ins.run(fileId, s.codec, s.lang ?? null, s.forced ? 1 : 0, s.sdh ? 1 : 0, s.relPath)
 }
 
+// Contrato: chamar dentro de tx() e só depois de confirmar que a biblioteca continua online, pois primeiro marca todos os arquivos dela como ausentes.
 export function markMissing(db: Db, libraryId: string, seenFileIds: Set<number>): void {
   db.prepare('UPDATE files SET missing = 1 WHERE library_id = ?').run(libraryId)
   const back = db.prepare('UPDATE files SET missing = 0 WHERE id = ?')
