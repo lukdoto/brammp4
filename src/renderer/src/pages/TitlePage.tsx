@@ -25,13 +25,14 @@ export function TitlePage({ id, refresh, onBack }: { id: number; refresh: number
   }, [id])
   useEffect(() => {
     let cancelled = false
-    void window.api.getTitle(id).then((d) => {
+    const apply = (d: TitleDetail | null) => {
       if (cancelled) return
       setDetail(d)
       setLoaded(true)
       const seasons = d ? seasonsOf(d.items) : []
       setSeason((cur) => (cur !== null && seasons.includes(cur) ? cur : (seasons[0] ?? null)))
-    })
+    }
+    window.api.getTitle(id).then(apply, () => apply(null))
     return () => {
       cancelled = true
     }

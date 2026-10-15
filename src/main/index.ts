@@ -47,13 +47,17 @@ app.whenReady().then(() => {
     if (current) return current
     const lib = repo.listLibraries(db).find((l) => l.id === id)
     if (!lib) return Promise.reject(new Error('biblioteca desconhecida'))
-    const ffprobe = binPath('ffprobe.exe')
-    const job = scanLibrary(lib, {
-      db,
-      probe: (abs) => probeFile(ffprobe, abs),
-      isOnline: async () => (await readMarker(lib.rootPath))?.id === id,
+    // binPath dentro da cadeia: binário ausente vira resumo abortado, nunca exceção síncrona
+    const job = Promise.resolve()
+      .then(() => {
+        const ffprobe = binPath('ffprobe.exe')
+            return scanLibrary(lib, {
+          db,
+          probe: (abs) => probeFile(ffprobe, abs),
+          isOnline: async () => (await readMarker(lib.rootPath))?.id === id,
       onProgress: (p) => send('scan:progress', p)
-    })
+        })
+      })
       .catch((err): ScanSummary => {
         console.error('[scan] falhou', id, err)
         return { libraryId: id, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, subtitles: 0, unmatched: 0 }
