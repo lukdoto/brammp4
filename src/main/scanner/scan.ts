@@ -37,7 +37,8 @@ export async function scanLibrary(lib: { id: string; rootPath: string }, deps: S
   let walked: Awaited<ReturnType<typeof walkLibrary>>
   try {
     walked = await walkLibrary(lib.rootPath)
-  } catch {
+  } catch (err) {
+    console.error('[scan] varredura abortada', lib.id, err)
     return aborted(lib.id)
   }
 
@@ -49,7 +50,7 @@ export async function scanLibrary(lib: { id: string; rootPath: string }, deps: S
   // undefined = reaproveitar leitura anterior; null = ffprobe falhou
   const probes = new Map<string, ProbeResult | null | undefined>()
   let done = 0
-  await pool(recognized, deps.concurrency ?? 4, async (v) => {
+  await pool(recognized, Math.max(1, deps.concurrency ?? 4), async (v) => {
     const firstKey = itemsOf(v.parsed!)[0]!.key
     const prev = existing.get(`${v.relPath}|${firstKey}`)
     if (prev && prev.size === v.size && prev.mtimeMs === v.mtimeMs && prev.probedAt) probes.set(v.relPath, undefined)

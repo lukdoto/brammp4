@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
@@ -21,6 +21,7 @@ const okProbe = async (): Promise<ProbeResult> => ({
 })
 
 beforeEach(() => {
+  vi.restoreAllMocks()
   root = mkdtempSync(join(tmpdir(), 'brammp4-lib-'))
   db = openDatabase(':memory:')
   repo.upsertLibrary(db, { id: 'lib1', label: 'HD Séries', rootPath: root })
@@ -74,6 +75,7 @@ describe('scanLibrary', () => {
   it('disco removido durante a leitura: nada é marcado como sumido', async () => {
     await scanLibrary(lib(), { db, probe: okProbe, isOnline: async () => true })
     rmSync(join(root, 'Filmes'), { recursive: true, force: true })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     const s = await scanLibrary(lib(), { db, probe: okProbe, isOnline: async () => false })
     expect(s.aborted).toBe(true)
     expect(repo.getCatalog(db).movies).toHaveLength(1)
@@ -81,9 +83,19 @@ describe('scanLibrary', () => {
 
   it('pasta raiz inacessível: aborta sem alterar o banco', async () => {
     await scanLibrary(lib(), { db, probe: okProbe, isOnline: async () => true })
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const s = await scanLibrary({ id: 'lib1', rootPath: join(root, 'nao-existe') }, { db, probe: okProbe, isOnline: async () => true })
     expect(s.aborted).toBe(true)
     expect(repo.getCatalog(db).series).toHaveLength(1)
+    expect(spy).toHaveBeenCalled()
+  })
+
+  it('falha do ffprobe não fica em cache: a próxima varredura tenta de novo', async () => {
+    await scanLibrary(lib(), { db, probe: async () => { throw new Error('travado') }, isOnline: async () => true })
+    const s = await scanLibrary(lib(), { db, probe: okProbe, isOnline: async () => true })
+    expect(s.probed).toBeGreaterThan(0)
+    const cat = repo.getCatalog(db)
+    expect(repo.getTitleDetail(db, cat.movies[0]!.id)!.items[0]!.files[0]).toMatchObject({ height: 1080 })
   })
 
   it('arquivo apagado com o disco conectado some do catálogo', async () => {

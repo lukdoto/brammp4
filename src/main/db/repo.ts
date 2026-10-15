@@ -69,7 +69,7 @@ export function upsertFile(
   if (f.probe !== undefined) {
     const p = f.probe
     db.prepare('UPDATE files SET duration_s = ?, width = ?, height = ?, video_codec = ?, probed_at = ? WHERE id = ?').run(
-      p?.durationS ?? null, p?.width ?? null, p?.height ?? null, p?.videoCodec ?? null, now(), id
+      p?.durationS ?? null, p?.width ?? null, p?.height ?? null, p?.videoCodec ?? null, p ? now() : null, id
     )
   }
   return id
