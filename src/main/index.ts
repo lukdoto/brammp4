@@ -10,6 +10,7 @@ import { resolveLibrary } from './libraries/resolve'
 import { binPath, dbPath } from './paths'
 import { probeFile } from './scanner/probe'
 import { scanLibrary } from './scanner/scan'
+import { createScanScheduler } from './scanner/scheduler'
 
 let win: BrowserWindow | null = null
 
@@ -49,14 +50,13 @@ function main(): void {
     // ao abrir, tudo começa offline: o primeiro tick do monitor dispara a varredura do que estiver conectado
     repo.setAllLibrariesOffline(db)
 
-    const running = new Map<string, Promise<ScanSummary>>()
-    const scan = (id: string): Promise<ScanSummary> => {
-      const current = running.get(id)
-      if (current) return current
+    // relê a biblioteca do banco a cada execução: se o disco voltou com outra letra no meio
+    // de uma varredura, a repetição agendada pelo scheduler usa o endereço novo
+    const scan = createScanScheduler((id): Promise<ScanSummary> => {
       const lib = repo.listLibraries(db).find((l) => l.id === id)
       if (!lib) return Promise.reject(new Error('biblioteca desconhecida'))
       // binPath dentro da cadeia: binário ausente vira resumo abortado, nunca exceção síncrona
-      const job = Promise.resolve()
+      return Promise.resolve()
         .then(() => {
           const ffprobe = binPath('ffprobe.exe')
           return scanLibrary(lib, {
@@ -74,10 +74,7 @@ function main(): void {
           send('scan:done', s)
           return s
         })
-        .finally(() => running.delete(id))
-      running.set(id, job)
-      return job
-    }
+    })
 
     registerIpc({ db, window: () => win, scan })
 
