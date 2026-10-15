@@ -1,6 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { parseSubtitlePath, matchSubtitles, normalizeLang } from '../../src/main/parser/subtitle'
 
+describe('chaves herdadas do protótipo', () => {
+  it('normalizeLang não devolve função para constructor/toString', () => {
+    for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(typeof normalizeLang(k)).toBe('string')
+    }
+  })
+  it('X.constructor.srt tem lang indefinida ou texto, nunca função', () => {
+    const p = parseSubtitlePath('Filme/X.constructor.srt')
+    expect(p.lang === undefined || typeof p.lang === 'string').toBe(true)
+    const q = parseSubtitlePath('Subs/constructor/X.srt')
+    expect(q.lang === undefined || typeof q.lang === 'string').toBe(true)
+  })
+})
+
 describe('parseSubtitlePath', () => {
   it('extrai idioma e marcadores do sufixo', () => {
     expect(parseSubtitlePath('Dark/Season 1/Dark.S01E03.pt-BR.forced.srt')).toMatchObject({

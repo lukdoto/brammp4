@@ -2,6 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { slugify, titleOf, itemsOf, episodeCode, episodeCodesOf } from '../../src/main/parser/keys'
 
 describe('keys', () => {
+  it('slugify mantém marcas combinantes de escritas não latinas', () => {
+    expect(slugify('ガンダム')).toBe('ガンダム')
+    expect(slugify('한국어')).toBe('한국어')
+    expect(slugify('ガンダム').includes('-')).toBe(false)
+  })
   it('slugify remove acentos e mantém letras não latinas', () => {
     expect(slugify('La Casa de Papel')).toBe('la-casa-de-papel')
     expect(slugify('Pokémon: A Série!')).toBe('pokemon-a-serie')

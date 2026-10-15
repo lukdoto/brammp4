@@ -15,6 +15,8 @@ const LANGS: Record<string, string> = {
   ja: 'jpn', jpn: 'jpn', japanese: 'jpn', japones: 'jpn', 'japonês': 'jpn'
 }
 
+const langOf = (key: string): string | undefined => (Object.hasOwn(LANGS, key) ? LANGS[key] : undefined)
+
 export const LANG_LABEL: Record<string, string> = {
   por: 'Português', eng: 'Inglês', spa: 'Espanhol', fra: 'Francês', deu: 'Alemão', ita: 'Italiano', jpn: 'Japonês'
 }
@@ -27,7 +29,7 @@ export function normalizeLang(code?: string): string | undefined {
   if (!code) return undefined
   const c = code.toLowerCase()
   if (c === 'und') return undefined
-  return LANGS[c] ?? c
+  return langOf(c) ?? c
 }
 
 export interface ParsedSub {
@@ -52,7 +54,7 @@ export function parseSubtitlePath(relPath: string): ParsedSub {
     const t = tokens[tokens.length - 1]!.toLowerCase()
     if (FORCED.test(t)) forced = true
     else if (SDH.test(t)) sdh = true
-    else if (!lang && LANGS[t]) lang = LANGS[t]
+    else if (!lang && langOf(t)) lang = langOf(t)
     else break
     tokens.pop()
   }
@@ -60,7 +62,7 @@ export function parseSubtitlePath(relPath: string): ParsedSub {
   const inSubsDir = dirs.some((d, i) => SUBS_DIR.test(d) && i >= dirs.length - 2)
   if (!lang && inSubsDir) {
     for (const w of base.split(/[ ._-]+/).reverse()) {
-      const l = LANGS[w.toLowerCase()]
+      const l = langOf(w.toLowerCase())
       if (l && w.length > 2) {
         lang = l
         break

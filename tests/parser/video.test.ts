@@ -14,6 +14,7 @@ describe('parseVideoPath', () => {
     ['Séries/La Casa de Papel/Temporada 1/La.Casa.de.Papel.S01E01.mkv', { kind: 'episode', seriesName: 'La Casa de Papel', season: 1, episodes: [1] }],
     ['進撃の巨人/Season 1/進撃の巨人 S01E01.mkv', { kind: 'episode', seriesName: '進撃の巨人', season: 1, episodes: [1] }],
     ['Filmes/Interestelar (2014) [1080p].mkv', { kind: 'movie', title: 'Interestelar', year: 2014 }],
+    ['Movie.Title.Dual.Audio.2015.mkv', { kind: 'movie', title: 'Movie Title', year: 2015 }],
     ['Blade.Runner.2049.2017.1080p.BluRay.x264.mkv', { kind: 'movie', title: 'Blade Runner 2049', year: 2017 }],
     ['1917.2019.1080p.mkv', { kind: 'movie', title: '1917', year: 2019 }],
     ['Filmes/Cidade de Deus (2002)/Cidade.de.Deus.2002.DUAL.mkv', { kind: 'movie', title: 'Cidade de Deus', year: 2002 }],

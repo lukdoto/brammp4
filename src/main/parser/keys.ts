@@ -4,6 +4,7 @@ export function slugify(s: string): string {
   return s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
+    .normalize('NFC')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-')
     .replace(/^-+|-+$/g, '')

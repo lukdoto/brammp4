@@ -40,19 +40,23 @@ export function isIgnored(relPath: string): boolean {
 export function cleanName(raw: string): { name: string; year?: number } {
   let s = raw.replace(/\[[^\]]*\]/g, ' ').replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim()
   const q = s.search(QUALITY)
-  if (q > 0) s = s.slice(0, q)
+  const end = q > 0 ? q : s.length
   const maxYear = new Date().getFullYear() + 1
   let year: number | undefined
-  let cut = -1
+  let cut = end
+  let after: number | undefined
   for (const m of s.matchAll(YEAR)) {
     const idx = (m.index ?? 0) + m[0].indexOf(m[1]!)
     const y = Number(m[1])
-    if (idx > 0 && y <= maxYear) {
+    if (idx <= 0 || y > maxYear) continue
+    if (idx < end) {
       year = y
       cut = idx
-    }
+    } else after = y
   }
-  if (cut > 0) s = s.slice(0, cut)
+  // ano depois do token de qualidade (Movie.Dual.Audio.2015) só vale se não houver ano antes dele
+  if (year === undefined) year = after
+  s = s.slice(0, cut)
   s = s.replace(/[\s([{-]+$/, '').replace(/^[\s-]+/, '').trim()
   return year === undefined ? { name: s } : { name: s, year }
 }
