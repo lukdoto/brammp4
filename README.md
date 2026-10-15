@@ -8,15 +8,24 @@ Status: em especificação. Veja `docs/superpowers/specs/`.
 
 ## Instalação (Windows)
 
-Ainda não há release publicada. Quando houver, o processo será (para pessoa ou agente seguir sem decisões):
+Um comando no PowerShell (não precisa de Node, git nem login no GitHub):
 
 ```powershell
-gh auth login
-gh release download --repo lukdoto/brammp4 --pattern "brammp4-Setup-*.exe" --dir $env:TEMP
-Get-ChildItem "$env:TEMP\brammp4-Setup-*.exe" | Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object { & $_.FullName /S }
+irm https://raw.githubusercontent.com/lukdoto/brammp4/main/scripts/install.ps1 | iex
 ```
 
-O instalador já contém mpv, ffprobe, ffmpeg e uosc. Na primeira abertura, o app pede a pasta do catálogo no disco removível.
+O script baixa o instalador da última release (que já contém o ffprobe) e instala em modo silencioso para o usuário atual.
+Na primeira abertura, o app pede a pasta do catálogo no disco removível. Para atualizar, rode o mesmo comando.
+Os dados (banco, progresso) ficam em `%APPDATA%\brammp4` e não são apagados na atualização.
+
+## Desenvolvimento
+
+```powershell
+npm ci
+npm run binaries   # baixa ffprobe para vendor/bin
+npm run dev
+npm test
+```
 
 Stack prevista: Electron + TypeScript + React, SQLite local, mpv (reprodução), ffprobe (leitura de faixas), TMDB (metadados).
 
