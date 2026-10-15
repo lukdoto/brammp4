@@ -43,6 +43,23 @@ describe('LibraryMonitor.tick', () => {
     spy.mockRestore()
   })
 
+  it('não chama onChange depois de stop() durante uma verificação pendente', async () => {
+    let release!: (r: Resolved) => void
+    const pending = new Promise<Resolved>((res) => { release = res })
+    const changes: [string, Resolved][] = []
+    const m = new LibraryMonitor({
+      intervalMs: 3000,
+      list: () => [{ id: 'a', rootPath: 'E:\\S', status: 'offline' as LibraryStatus }],
+      resolve: () => pending,
+      onChange: (id, r) => changes.push([id, r])
+    })
+    const t = m.tick()
+    m.stop()
+    release({ status: 'online', rootPath: 'E:\\S' })
+    await t
+    expect(changes).toEqual([])
+  })
+
   it('reporta a transição online -> offline', async () => {
     const changes: [string, Resolved][] = []
     const m = new LibraryMonitor({

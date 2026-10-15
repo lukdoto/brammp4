@@ -22,7 +22,13 @@ export async function writeMarker(dir: string, label: string): Promise<Marker> {
   const file = join(dir, MARKER)
   await writeFile(file, JSON.stringify(m, null, 2), { encoding: 'utf8', flag: 'wx' })
   if (process.platform === 'win32') {
-    await new Promise<void>((resolve) => execFile('attrib', ['+h', file], { windowsHide: true }, () => resolve()))
+    const attrib = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'attrib.exe')
+    await new Promise<void>((resolve) =>
+      execFile(attrib, ['+h', file], { windowsHide: true }, (err) => {
+        if (err) console.warn('Não foi possível ocultar o marcador da biblioteca:', err.message)
+        resolve()
+      })
+    )
   }
   return m
 }
