@@ -68,7 +68,7 @@ export interface FileView {
   subCount: number
 }
 
-export interface ItemView { key: string; season: number | null; episode: number | null; files: FileView[] }
+export interface ItemView { key: string; season: number | null; episode: number | null; name?: string; files: FileView[] }
 
 export interface TitleDetail {
   id: number

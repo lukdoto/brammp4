@@ -28,6 +28,20 @@ describe('repo', () => {
     expect(a).toBe(b)
   })
 
+  it('upsertItem guarda o título do episódio e não o sobrescreve com vazio', () => {
+    const titleId = repo.upsertTitle(db, { kind: 'series', localKey: 'series:dark', name: 'Dark' })
+    const key = 'local:dark:S01E01'
+    repo.upsertItem(db, { key, titleId, season: 1, episode: 1 })
+    repo.upsertFile(db, { itemKey: key, libraryId: 'lib1', relPath: 'Dark/e1.mkv', size: 1, mtimeMs: 1 })
+    const nameOf = () => repo.getTitleDetail(db, titleId)!.items[0]!.name
+    expect(nameOf()).toBeUndefined()
+    repo.upsertItem(db, { key, titleId, season: 1, episode: 1, name: 'Segredos' })
+    expect(nameOf()).toBe('Segredos')
+    repo.upsertItem(db, { key, titleId, season: 1, episode: 1 })
+    repo.upsertItem(db, { key, titleId, season: 1, episode: 1, name: 'Outro' })
+    expect(nameOf()).toBe('Segredos')
+  })
+
   it('upsertFile com probe undefined preserva os dados lidos antes', () => {
     const id = addEpisode('S01E01', 'Dark/S1/e1.mkv')
     const again = repo.upsertFile(db, { itemKey: 'local:dark:S01E01', libraryId: 'lib1', relPath: 'Dark/S1/e1.mkv', size: 100, mtimeMs: 1 })

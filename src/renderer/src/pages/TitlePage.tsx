@@ -68,7 +68,7 @@ export function TitlePage({ id, refresh, onBack }: { id: number; refresh: number
           <div key={item.key} className={`episode${offline ? ' unavailable' : ''}`}>
             <div className="code">{itemLabel(item.season, item.episode)}</div>
             <div className="info">
-              <div>{item.episode !== null ? `Episódio ${item.episode}` : detail.name}</div>
+              <div>{item.episode !== null ? `Episódio ${item.episode}${item.name ? ` · ${item.name}` : ''}` : detail.name}</div>
               <div>
                 <FileBadges f={best} />
                 {item.files.length > 1 && <span className="badge">{item.files.length} versões</span>}
