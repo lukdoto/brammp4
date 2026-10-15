@@ -18,6 +18,14 @@ describe('marker', () => {
     await expect(writeMarker(dir, 'B')).rejects.toThrow()
     expect(await readMarker(dir)).toEqual(first)
   })
+  it('grava o id informado e gera um novo quando omitido', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brammp4-'))
+    const m = await writeMarker(dir, 'A', 'id-antigo')
+    expect(m.id).toBe('id-antigo')
+    expect((await readMarker(dir))?.id).toBe('id-antigo')
+    const other = await writeMarker(mkdtempSync(join(tmpdir(), 'brammp4-')), 'B')
+    expect(other.id).toMatch(/^[0-9a-f-]{36}$/)
+  })
   it('pasta inexistente (disco desconectado) retorna null', async () => {
     expect(await readMarker('Q:\\nao\\existe')).toBeNull()
   })

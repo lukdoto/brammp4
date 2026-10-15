@@ -1,9 +1,10 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, type MessageBoxOptions } from 'electron'
 import { basename } from 'node:path'
 import type { ScanSummary } from '../shared/types'
 import type { Db } from './db/database'
 import * as repo from './db/repo'
 import { readMarker, writeMarker } from './libraries/marker'
+import { findOfflineTwin } from './libraries/twin'
 
 export interface IpcContext {
   db: Db
@@ -23,11 +24,32 @@ export function registerIpc(ctx: IpcContext): void {
     if (r.canceled || !dir) return null
     const typed = label.trim()
     const existing = await readMarker(dir)
-    const name = typed || existing?.label || basename(dir)
-    const marker = existing ?? (await writeMarker(dir, name))
-    repo.upsertLibrary(ctx.db, { id: marker.id, label: name, rootPath: dir })
-    ctx.scan(marker.id).catch((err) => console.error('[scan] falhou', marker.id, err))
-    return repo.listLibraries(ctx.db).find((l) => l.id === marker.id) ?? null
+    let name = typed || existing?.label || basename(dir)
+    let marker = existing
+    if (!marker) {
+      // marcador apagado: oferece reaproveitar a biblioteca offline que apontava para esta mesma pasta
+      const twin = findOfflineTwin(repo.listLibraries(ctx.db), dir)
+      let reuse = false
+      if (twin) {
+        const box: MessageBoxOptions = {
+          type: 'question',
+          buttons: ['Reutilizar', 'Criar nova'],
+          defaultId: 0,
+          cancelId: 1,
+          message: `Esta pasta parece ser a biblioteca “${twin.label}”, que perdeu o arquivo de identificação. Reutilizar o catálogo e o progresso dela?`
+        }
+        const ans = win ? await dialog.showMessageBox(win, box) : await dialog.showMessageBox(box)
+        reuse = ans.response === 0
+      }
+      if (reuse && twin) {
+        name = typed || twin.label
+        marker = await writeMarker(dir, name, twin.id)
+      } else marker = await writeMarker(dir, name)
+    }
+    const id = marker.id
+    repo.upsertLibrary(ctx.db, { id, label: name, rootPath: dir })
+    ctx.scan(id).catch((err) => console.error('[scan] falhou', id, err))
+    return repo.listLibraries(ctx.db).find((l) => l.id === id) ?? null
   })
 
   ipcMain.handle('libraries:rescan', (_e, id: unknown) => {
