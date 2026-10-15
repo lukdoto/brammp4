@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { plural } from '../format'
 import type { LibraryView, ScanProgress, ScanSummary } from '../../../shared/types'
 
 interface Props {
@@ -9,10 +10,10 @@ interface Props {
 }
 
 function SummaryLine({ s }: { s: ScanSummary }) {
-  if (s.aborted) return <div className="summary error">Varredura interrompida: o disco foi desconectado.</div>
+  if (s.aborted) return <div className="summary error">Varredura interrompida. Confira a conexão do disco e tente novamente.</div>
   return (
     <div className="summary">
-      {s.series} séries · {s.episodes} episódios · {s.movies} filmes · {s.subtitles} legendas
+      {plural(s.series, 'série', 'séries')} · {plural(s.episodes, 'episódio', 'episódios')} · {plural(s.movies, 'filme', 'filmes')} · {plural(s.subtitles, 'legenda', 'legendas')}
       {s.unmatched > 0 && ` · ${s.unmatched} não identificados`}
     </div>
   )
@@ -35,6 +36,11 @@ export function Libraries({ libraries, progress, summaries, onChanged }: Props) 
     } finally {
       setBusy(false)
     }
+  }
+
+  function rescan(id: string) {
+    setError(null)
+    window.api.rescanLibrary(id).catch((e: unknown) => setError(`Não foi possível revarrer: ${(e as Error).message}`))
   }
 
   return (
@@ -64,7 +70,7 @@ export function Libraries({ libraries, progress, summaries, onChanged }: Props) 
               )}
               {!scanning && s && <SummaryLine s={s} />}
             </div>
-            <button disabled={l.status === 'offline'} onClick={() => void window.api.rescanLibrary(l.id)}>Revarrer</button>
+            <button disabled={l.status === 'offline'} onClick={() => rescan(l.id)}>Revarrer</button>
           </div>
         )
       })}

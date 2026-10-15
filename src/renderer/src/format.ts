@@ -24,3 +24,7 @@ export function itemLabel(season: number | null, episode: number | null): string
 export function seasonsOf(items: ItemView[]): number[] {
   return [...new Set(items.map((i) => i.season).filter((s): s is number => s !== null))].sort((a, b) => a - b)
 }
+
+export function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`
+}

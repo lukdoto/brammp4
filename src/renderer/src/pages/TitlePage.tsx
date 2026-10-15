@@ -16,14 +16,34 @@ function FileBadges({ f }: { f: FileView }) {
 
 export function TitlePage({ id, refresh, onBack }: { id: number; refresh: number; onBack: () => void }) {
   const [detail, setDetail] = useState<TitleDetail | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const [season, setSeason] = useState<number | null>(null)
   useEffect(() => {
+    setDetail(null)
+    setLoaded(false)
+    setSeason(null)
+  }, [id])
+  useEffect(() => {
+    let cancelled = false
     void window.api.getTitle(id).then((d) => {
+      if (cancelled) return
       setDetail(d)
-      if (d && season === null) setSeason(seasonsOf(d.items)[0] ?? null)
+      setLoaded(true)
+      const seasons = d ? seasonsOf(d.items) : []
+      setSeason((cur) => (cur !== null && seasons.includes(cur) ? cur : (seasons[0] ?? null)))
     })
+    return () => {
+      cancelled = true
+    }
   }, [id, refresh])
-  if (!detail) return <main><button onClick={onBack}>Voltar</button></main>
+  if (!detail) {
+    return (
+      <main>
+        <button onClick={onBack}>← Voltar</button>
+        <p>{loaded ? 'Título não encontrado. Ele pode ter sido removido do disco.' : 'Carregando…'}</p>
+      </main>
+    )
+  }
   const items = detail.kind === 'series' ? detail.items.filter((i) => i.season === season) : detail.items
   return (
     <main>
@@ -40,7 +60,8 @@ export function TitlePage({ id, refresh, onBack }: { id: number; refresh: number
         </div>
       )}
       {items.map((item) => {
-        const best = item.files.find((f) => f.available) ?? item.files[0]!
+        const best = item.files.find((f) => f.available) ?? item.files[0]
+        if (!best) return null
         const offline = !item.files.some((f) => f.available)
         return (
           <div key={item.key} className={`episode${offline ? ' unavailable' : ''}`}>
