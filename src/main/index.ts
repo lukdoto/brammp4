@@ -51,11 +51,11 @@ app.whenReady().then(() => {
     const job = Promise.resolve()
       .then(() => {
         const ffprobe = binPath('ffprobe.exe')
-            return scanLibrary(lib, {
+        return scanLibrary(lib, {
           db,
           probe: (abs) => probeFile(ffprobe, abs),
           isOnline: async () => (await readMarker(lib.rootPath))?.id === id,
-      onProgress: (p) => send('scan:progress', p)
+          onProgress: (p) => send('scan:progress', p)
         })
       })
       .catch((err): ScanSummary => {
