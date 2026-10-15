@@ -31,67 +31,80 @@ function createWindow(): void {
     win?.show()
   })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (e) => e.preventDefault())
   if (process.env['ELECTRON_RENDERER_URL']) void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
   win.on('closed', () => (win = null))
 }
 
-app.whenReady().then(() => {
-  const db = openDatabase(dbPath())
-  // ao abrir, tudo começa offline: o primeiro tick do monitor dispara a varredura do que estiver conectado
-  repo.setAllLibrariesOffline(db)
-
-  const running = new Map<string, Promise<ScanSummary>>()
-  const scan = (id: string): Promise<ScanSummary> => {
-    const current = running.get(id)
-    if (current) return current
-    const lib = repo.listLibraries(db).find((l) => l.id === id)
-    if (!lib) return Promise.reject(new Error('biblioteca desconhecida'))
-    // binPath dentro da cadeia: binário ausente vira resumo abortado, nunca exceção síncrona
-    const job = Promise.resolve()
-      .then(() => {
-        const ffprobe = binPath('ffprobe.exe')
-        return scanLibrary(lib, {
-          db,
-          probe: (abs) => probeFile(ffprobe, abs),
-          isOnline: async () => (await readMarker(lib.rootPath))?.id === id,
-          onProgress: (p) => send('scan:progress', p)
-        })
-      })
-      .catch((err): ScanSummary => {
-        console.error('[scan] falhou', id, err)
-        return { libraryId: id, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, subtitles: 0, unmatched: 0 }
-      })
-      .then((s) => {
-        send('scan:done', s)
-        return s
-      })
-      .finally(() => running.delete(id))
-    running.set(id, job)
-    return job
-  }
-
-  registerIpc({ db, window: () => win, scan })
-
-  const monitor = new LibraryMonitor({
-    intervalMs: 3000,
-    list: () => repo.listLibraries(db),
-    resolve: (lib) => resolveLibrary(lib),
-    onChange: (id, r) => {
-      if (r.status === 'online') repo.setLibraryStatus(db, id, 'online', r.rootPath)
-      else repo.setLibraryStatus(db, id, 'offline')
-      const view = repo.listLibraries(db).find((l) => l.id === id)
-      if (view) send('libraries:status', view)
-      if (r.status === 'online') scan(id).catch((err) => console.error('[scan] falhou', id, err))
-    }
+function main(): void {
+  app.on('second-instance', () => {
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
   })
-  monitor.start()
-  app.on('before-quit', () => monitor.stop())
 
-  createWindow()
-}).catch((err) => {
-  dialog.showErrorBox('brammp4', 'Não foi possível iniciar: ' + (err instanceof Error ? err.message : String(err)))
-  app.quit()
-})
+  app.whenReady().then(() => {
+    const db = openDatabase(dbPath())
+    // ao abrir, tudo começa offline: o primeiro tick do monitor dispara a varredura do que estiver conectado
+    repo.setAllLibrariesOffline(db)
 
-app.on('window-all-closed', () => app.quit())
+    const running = new Map<string, Promise<ScanSummary>>()
+    const scan = (id: string): Promise<ScanSummary> => {
+      const current = running.get(id)
+      if (current) return current
+      const lib = repo.listLibraries(db).find((l) => l.id === id)
+      if (!lib) return Promise.reject(new Error('biblioteca desconhecida'))
+      // binPath dentro da cadeia: binário ausente vira resumo abortado, nunca exceção síncrona
+      const job = Promise.resolve()
+        .then(() => {
+          const ffprobe = binPath('ffprobe.exe')
+          return scanLibrary(lib, {
+            db,
+            probe: (abs) => probeFile(ffprobe, abs),
+            isOnline: async () => (await readMarker(lib.rootPath))?.id === id,
+            onProgress: (p) => send('scan:progress', p)
+          })
+        })
+        .catch((err): ScanSummary => {
+          console.error('[scan] falhou', id, err)
+          return { libraryId: id, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, subtitles: 0, unmatched: 0 }
+        })
+        .then((s) => {
+          send('scan:done', s)
+          return s
+        })
+        .finally(() => running.delete(id))
+      running.set(id, job)
+      return job
+    }
+
+    registerIpc({ db, window: () => win, scan })
+
+    const monitor = new LibraryMonitor({
+      intervalMs: 3000,
+      list: () => repo.listLibraries(db),
+      resolve: (lib) => resolveLibrary(lib),
+      onChange: (id, r) => {
+        if (r.status === 'online') repo.setLibraryStatus(db, id, 'online', r.rootPath)
+        else repo.setLibraryStatus(db, id, 'offline')
+        const view = repo.listLibraries(db).find((l) => l.id === id)
+        if (view) send('libraries:status', view)
+        if (r.status === 'online') scan(id).catch((err) => console.error('[scan] falhou', id, err))
+      }
+    })
+    monitor.start()
+    app.on('before-quit', () => monitor.stop())
+
+    createWindow()
+  }).catch((err) => {
+    dialog.showErrorBox('brammp4', 'Não foi possível iniciar: ' + (err instanceof Error ? err.message : String(err)))
+    app.quit()
+  })
+
+  app.on('window-all-closed', () => app.quit())
+}
+
+// instância única: um segundo processo não abre o banco, só traz a janela existente para a frente
+if (!app.requestSingleInstanceLock()) app.quit()
+else main()
