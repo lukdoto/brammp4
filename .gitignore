@@ -10,5 +10,5 @@ release/
 .remember/
 .DS_Store
 Thumbs.db
-# binários do mpv baixados localmente
-vendor/mpv/
+# binários baixados localmente (ffprobe etc.) e carimbos de hash
+vendor/
