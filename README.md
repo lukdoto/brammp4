@@ -14,7 +14,7 @@ Um comando no PowerShell (não precisa de Node, git nem login no GitHub):
 irm https://raw.githubusercontent.com/lukdoto/brammp4/main/scripts/install.ps1 | iex
 ```
 
-O script baixa o instalador da última release (que já contém o ffprobe) e instala em modo silencioso para o usuário atual.
+O script baixa o instalador da última release (que já contém o ffprobe) e instala em modo silencioso para o usuário atual. O texto da licença GPL do ffmpeg/ffprobe acompanha o instalador em `resources/bin/LICENSE`.
 Na primeira abertura, o app pede a pasta do catálogo no disco removível. Para atualizar, rode o mesmo comando.
 Os dados (banco, progresso) ficam em `%APPDATA%\brammp4` e não são apagados na atualização.
 
