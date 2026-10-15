@@ -1,0 +1,24 @@
+appId: io.github.lukdoto.brammp4
+productName: brammp4
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: vendor/bin
+    to: bin
+asar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: brammp4-Setup-${version}.${ext}
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+publish: null
