@@ -65,6 +65,38 @@ describe('repo', () => {
     expect(repo.getTitleDetail(db, repo.getCatalog(db).series[0]!.id)!.items).toHaveLength(2)
   })
 
+  it('biblioteca offline não ressuscita arquivo marcado como sumido', () => {
+    const f1 = addEpisode('S01E01', 'Dark/S1/e1.mkv')
+    addEpisode('S01E02', 'Dark/S1/e2.mkv')
+    repo.markMissing(db, 'lib1', new Set([f1]))
+    repo.setLibraryStatus(db, 'lib1', 'offline')
+    const cat = repo.getCatalog(db)
+    expect(cat.series[0]).toMatchObject({ available: false, offlineLabels: ['HD Séries'] })
+    expect(repo.getTitleDetail(db, cat.series[0]!.id)!.items.map((i) => i.episode)).toEqual([1])
+    repo.markMissing(db, 'lib1', new Set())
+    repo.setLibraryStatus(db, 'lib1', 'offline')
+    expect(repo.getCatalog(db).series).toEqual([])
+  })
+
+  it('biblioteca offline com arquivo presente: aparece apagado com o apelido', () => {
+    addEpisode('S01E01', 'Dark/S1/e1.mkv')
+    repo.setLibraryStatus(db, 'lib1', 'offline')
+    const cat = repo.getCatalog(db)
+    expect(cat.series[0]).toMatchObject({ available: false, offlineLabels: ['HD Séries'] })
+    expect(repo.getTitleDetail(db, cat.series[0]!.id)!.items[0]!.files[0]).toMatchObject({ available: false })
+  })
+
+  it('apelido de biblioteca offline só aparece se ela ainda tem arquivo do título', () => {
+    repo.upsertLibrary(db, { id: 'lib2', label: 'HD Antigo', rootPath: 'F:\\Series' })
+    addEpisode('S01E01', 'Dark/e1.mkv', 'lib1')
+    const gone = addEpisode('S01E01', 'Dark/e1.mkv', 'lib2')
+    repo.markMissing(db, 'lib2', new Set())
+    expect(gone).toBeGreaterThan(0)
+    repo.setLibraryStatus(db, 'lib1', 'offline')
+    repo.setLibraryStatus(db, 'lib2', 'offline')
+    expect(repo.getCatalog(db).series[0]!.offlineLabels).toEqual(['HD Séries'])
+  })
+
   it('setLibraryStatus atualiza o endereço quando a letra muda', () => {
     repo.setLibraryStatus(db, 'lib1', 'online', 'F:\\Videos\\Series')
     expect(repo.listLibraries(db)[0]!.rootPath).toBe('F:\\Videos\\Series')

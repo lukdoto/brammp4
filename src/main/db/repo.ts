@@ -129,14 +129,15 @@ interface CatalogRow { id: number; kind: 'series' | 'movie'; name: string; year:
 export function getCatalog(db: Db): Catalog {
   const rows = db.prepare(
     `SELECT t.id, t.kind, t.name, t.year, l.label, l.status, f.missing
-     FROM titles t JOIN items i ON i.title_id = t.id JOIN files f ON f.item_key = i.key JOIN libraries l ON l.id = f.library_id`
+     FROM titles t JOIN items i ON i.title_id = t.id JOIN files f ON f.item_key = i.key JOIN libraries l ON l.id = f.library_id
+     WHERE f.missing = 0`
   ).all() as unknown as CatalogRow[]
   const cards = new Map<number, TitleCard & { visible: boolean }>()
   for (const r of rows) {
     const c = cards.get(r.id) ?? { id: r.id, kind: r.kind, name: r.name, year: opt(r.year), available: false, offlineLabels: [], visible: false }
-    if (r.status === 'online' && r.missing === 0) c.available = true
-    if (r.status === 'offline' && !c.offlineLabels.includes(r.label)) c.offlineLabels.push(r.label)
-    if (r.status === 'offline' || r.missing === 0) c.visible = true
+    if (r.status === 'online') c.available = true
+    else if (!c.offlineLabels.includes(r.label)) c.offlineLabels.push(r.label)
+    c.visible = true
     cards.set(r.id, c)
   }
   const list = [...cards.values()]
@@ -159,7 +160,7 @@ export function getTitleDetail(db: Db, id: number): TitleDetail | null {
        (SELECT COUNT(*) FROM tracks tr WHERE tr.file_id = f.id AND tr.type = 'audio') AS audio_count,
        (SELECT COUNT(*) FROM tracks tr WHERE tr.file_id = f.id AND tr.type = 'sub') AS sub_count
      FROM files f JOIN libraries l ON l.id = f.library_id JOIN items i ON i.key = f.item_key
-     WHERE i.title_id = ? AND (f.missing = 0 OR l.status = 'offline')
+     WHERE i.title_id = ? AND f.missing = 0
      ORDER BY f.height DESC`
   ).all(id) as {
     id: number; item_key: string; rel_path: string; height: number | null; video_codec: string | null; missing: number
