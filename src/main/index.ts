@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { join } from 'node:path'
 import type { ScanSummary } from '../shared/types'
 import { openDatabase } from './db/database'
@@ -26,8 +26,11 @@ function createWindow(): void {
     autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: true, contextIsolation: true }
   })
-  win.once('ready-to-show', () => win?.maximize())
-  win.once('ready-to-show', () => win?.show())
+  win.once('ready-to-show', () => {
+    win?.maximize()
+    win?.show()
+  })
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   if (process.env['ELECTRON_RENDERER_URL']) void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   else void win.loadFile(join(__dirname, '../renderer/index.html'))
   win.on('closed', () => (win = null))
@@ -51,6 +54,10 @@ app.whenReady().then(() => {
       isOnline: async () => (await readMarker(lib.rootPath))?.id === id,
       onProgress: (p) => send('scan:progress', p)
     })
+      .catch((err): ScanSummary => {
+        console.error('[scan] falhou', id, err)
+        return { libraryId: id, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, subtitles: 0, unmatched: 0 }
+      })
       .then((s) => {
         send('scan:done', s)
         return s
@@ -71,13 +78,16 @@ app.whenReady().then(() => {
       else repo.setLibraryStatus(db, id, 'offline')
       const view = repo.listLibraries(db).find((l) => l.id === id)
       if (view) send('libraries:status', view)
-      if (r.status === 'online') void scan(id)
+      if (r.status === 'online') scan(id).catch((err) => console.error('[scan] falhou', id, err))
     }
   })
   monitor.start()
   app.on('before-quit', () => monitor.stop())
 
   createWindow()
+}).catch((err) => {
+  dialog.showErrorBox('brammp4', 'Não foi possível iniciar: ' + (err instanceof Error ? err.message : String(err)))
+  app.quit()
 })
 
 app.on('window-all-closed', () => app.quit())
