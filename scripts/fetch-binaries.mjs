@@ -16,7 +16,7 @@ const lock = process.argv.includes('--lock')
 const vendor = join(root, 'vendor')
 const bin = join(vendor, 'bin')
 // tar do Windows (bsdtar) abre zip e 7z; o tar do Git Bash não abre zip.
-const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\Windows', 'System32', 'tar.exe') : 'tar'
+const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'
 await mkdir(bin, { recursive: true })
 
 async function findFile(dir, name) {

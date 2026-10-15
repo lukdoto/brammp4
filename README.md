@@ -4,7 +4,7 @@ Reprodutor pessoal estilo streaming para filmes e séries guardados em HDs exter
 Funciona offline, lembra episódio e posição de cada vídeo e faz backup do progresso
 no Google Drive (pasta oculta do app).
 
-Status: em especificação. Veja `docs/superpowers/specs/`.
+Status: M1 (catálogo local) em desenvolvimento. A instalação abaixo funciona assim que houver uma release publicada. Especificação em `docs/superpowers/specs/`.
 
 ## Instalação (Windows)
 
@@ -27,6 +27,6 @@ npm run dev
 npm test
 ```
 
-Stack prevista: Electron + TypeScript + React, SQLite local, mpv (reprodução), ffprobe (leitura de faixas), TMDB (metadados).
+Stack prevista: Electron + TypeScript + React, SQLite local, mpv (reprodução, entra no M2), ffprobe (leitura de faixas), TMDB (metadados).
 
 Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB.
