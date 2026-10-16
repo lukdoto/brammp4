@@ -137,6 +137,23 @@ describe('ProgressTracker', () => {
     expect(saved.map((s) => s.positionS)).toEqual([100])
   })
 
+  it('depois de stop() nada mais é gravado; o que já foi gravado fica', () => {
+    const { tracker, saved, tick } = make()
+    tracker.arm()
+    tracker.onDuration(1380)
+    tracker.onTimePos(605)
+    expect(saved.map((s) => s.positionS)).toEqual([605])
+    tracker.stop()
+    tick(10000)
+    tracker.onTimePos(12)
+    tracker.onPause(true)
+    tracker.onEnd('eof')
+    tracker.flush()
+    tracker.arm()
+    tracker.onTimePos(20)
+    expect(saved.map((s) => s.positionS)).toEqual([605])
+  })
+
   it('flush grava a última posição conhecida mesmo dentro dos 5 s', () => {
     const { tracker, saved, tick } = make()
     tracker.arm()

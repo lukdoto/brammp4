@@ -21,6 +21,7 @@ const same = (a: SavedProgress, b: SavedProgress) => a.positionS === b.positionS
  */
 export class ProgressTracker {
   private armed = false
+  private stopped = false
   private position: number | undefined
   private duration: number | undefined
   private lastSaveAt = Number.NEGATIVE_INFINITY
@@ -69,8 +70,17 @@ export class ProgressTracker {
     this.saveNow()
   }
 
+  /** Encerra o rastreador para sempre: depois disto nada mais é gravado (outro arquivo entrou no mesmo mpv). */
+  stop(): void {
+    this.stopped = true
+  }
+
+  get isStopped(): boolean {
+    return this.stopped
+  }
+
   private saveNow(): void {
-    if (!this.armed || this.position === undefined) return
+    if (this.stopped || !this.armed || this.position === undefined) return
     const next: SavedProgress = {
       positionS: this.position,
       ...(this.duration !== undefined ? { durationS: this.duration } : {}),

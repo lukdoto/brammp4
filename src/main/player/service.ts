@@ -10,7 +10,10 @@ import { findExternalSubId, prefsFromMpv, prefsFromSelection, type MpvTrack } fr
 
 /** Se o `playback-restart` nunca chegar, arma o rastreador depois deste tempo para o progresso nunca se perder em silêncio. */
 const ARM_FALLBACK_MS = 15000
-const OBSERVED = ['time-pos', 'duration', 'pause', 'aid', 'sid'] as const
+const OBSERVED = ['path', 'time-pos', 'duration', 'pause', 'aid', 'sid'] as const
+
+/** Compara caminhos do Windows sem depender do estilo da barra nem da caixa. */
+const normPath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
 
 export interface ChildLike {
   on(event: string, listener: (...args: any[]) => void): unknown
@@ -50,6 +53,10 @@ interface Session {
   closed: boolean
   trackList: MpvTrack[]
   endReason?: string
+  /** já chegou um end-file: um start-file depois dele é outro arquivo */
+  ended: boolean
+  /** outro arquivo entrou neste mpv (próximo da pasta, arrastar, abrir): o rastreador parou e o mpv recebeu quit */
+  foreign: boolean
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -192,7 +199,9 @@ export class PlayerService {
       tracker,
       live: false,
       closed: false,
-      trackList: []
+      trackList: [],
+      ended: false,
+      foreign: false
     }
     this.session = session
     const gone = () => {
@@ -254,8 +263,24 @@ export class PlayerService {
     if (id !== undefined) await s.client.setProperty('sid', id).catch(() => {})
   }
 
+  /**
+   * Outro arquivo entrou no mesmo mpv: nada dele pode ser gravado no item que foi aberto.
+   * O end-file do arquivo original chega antes e já gravou a posição dele; daqui em diante o rastreador fica mudo.
+   */
+  private markForeign(s: Session): void {
+    if (s.foreign) return
+    s.foreign = true
+    s.tracker.stop()
+    void s.client?.command('quit').catch(() => {})
+  }
+
   private onProperty(s: Session, name: string, data: unknown): void {
+    if (s.foreign) return
     switch (name) {
+      case 'path':
+        // null/undefined aparece ao descarregar o arquivo no fim; só um caminho diferente é outro arquivo
+        if (typeof data === 'string' && normPath(data) !== normPath(s.absPath)) this.markForeign(s)
+        return
       case 'time-pos':
         if (!s.tracker.isArmed && typeof data === 'number' && this.deps.now() - s.startedAt >= ARM_FALLBACK_MS) s.tracker.arm()
         s.tracker.onTimePos(data)
@@ -284,7 +309,11 @@ export class PlayerService {
   }
 
   private onEvent(s: Session, ev: MpvMessage): void {
+    if (s.foreign) return
     switch (ev.event) {
+      case 'start-file':
+        if (s.ended) this.markForeign(s)
+        return
       case 'file-loaded':
         void s.client
           ?.getProperty('track-list')
@@ -304,6 +333,7 @@ export class PlayerService {
         return
       case 'end-file': {
         s.endReason = String(ev.reason)
+        s.ended = true
         // se o arquivo sumiu, "eof" foi só a leitura falhando: não conta como terminou
         s.tracker.onEnd(this.deps.exists(s.absPath) ? ev.reason : 'error')
         return
@@ -348,7 +378,9 @@ export class PlayerService {
     }
     if (this.session === s) this.session = undefined
     if (!s.live) return
-    const reason: PlayerClosedReason = !this.deps.exists(s.absPath)
+    const reason: PlayerClosedReason = s.foreign
+      ? 'closed'
+      : !this.deps.exists(s.absPath)
       ? 'disconnected'
       : !s.tracker.isArmed
         ? 'error'

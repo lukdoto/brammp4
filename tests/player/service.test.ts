@@ -380,6 +380,87 @@ describe('PlayerService: ciclo de vida da sessão', () => {
     await waitFor(() => saved(h)?.positionS === 606)
   })
 
+  it('outro arquivo carregado no mesmo mpv (próximo da pasta, arrastar): nada é gravado no item, mpv recebe quit', async () => {
+    const h = harness()
+    await h.service.play(req(h, { startS: 600 }))
+    const mpv = h.fakes.mpv!
+    const launched = h.fakes.args.at(-1)!
+    mpv.setProp('path', launched) // o primeiro valor é o próprio arquivo
+    mpv.setProp('duration', 1380)
+    mpv.props.set('time-pos', 605)
+    mpv.emitEvent({ event: 'playback-restart' })
+    await waitFor(() => saved(h)?.positionS === 605)
+    h.tick(1000)
+    // o uosc manda "next": o arquivo atual termina (stop) e o seguinte começa no mesmo processo
+    mpv.emitEvent({ event: 'end-file', reason: 'stop' })
+    mpv.setProp('path', 'E:\\Videos\\Series\\Dark\\Season 1\\Dark.S01E02.mkv')
+    mpv.setProp('duration', 1400)
+    mpv.props.set('time-pos', 12)
+    mpv.emitEvent({ event: 'playback-restart' })
+    h.tick(6000)
+    mpv.setProp('time-pos', 12)
+    mpv.setProp('pause', true)
+    await waitFor(() => mpv.commands.some((c) => c[0] === 'quit'))
+    await sleep(40)
+    expect(saved(h)).toMatchObject({ positionS: 605, durationS: 1380, watched: false })
+    expect(h.db.prepare('SELECT item_key FROM progress').all().map((r: any) => r.item_key)).toEqual([h.keys[0]])
+    h.fakes.child!.exitNow(0)
+    await waitFor(() => h.states.at(-1)?.playing === false)
+    expect(h.states.at(-1)?.closedReason).toBe('closed')
+    expect(saved(h)?.positionS).toBe(605)
+  })
+
+  it('start-file depois de um end-file também é outro arquivo (reforço caso o path não chegue)', async () => {
+    const h = harness()
+    await h.service.play(req(h, { startS: 600 }))
+    const mpv = h.fakes.mpv!
+    mpv.props.set('time-pos', 605)
+    mpv.emitEvent({ event: 'playback-restart' })
+    await waitFor(() => saved(h)?.positionS === 605)
+    h.tick(1000)
+    mpv.setProp('time-pos', 640)
+    await sleep(30)
+    mpv.emitEvent({ event: 'end-file', reason: 'stop' })
+    mpv.emitEvent({ event: 'start-file' })
+    mpv.props.set('time-pos', 3)
+    mpv.emitEvent({ event: 'playback-restart' })
+    h.tick(6000)
+    mpv.setProp('time-pos', 4)
+    await waitFor(() => mpv.commands.some((c) => c[0] === 'quit'))
+    await sleep(40)
+    expect(saved(h)?.positionS).toBe(640) // o end-file do original gravou; o novo arquivo não
+  })
+
+  it('path igual ao lançado (outra barra/caixa) não dispara nada', async () => {
+    const h = harness()
+    await h.service.play(req(h, { startS: 600 }))
+    const mpv = h.fakes.mpv!
+    const launched = h.fakes.args.at(-1)!
+    mpv.setProp('path', launched.replace(/\\/g, '/').toUpperCase())
+    mpv.props.set('time-pos', 605)
+    mpv.emitEvent({ event: 'playback-restart' })
+    await waitFor(() => saved(h)?.positionS === 605)
+    h.tick(5000)
+    mpv.setProp('time-pos', 615)
+    await waitFor(() => saved(h)?.positionS === 615)
+    expect(mpv.commands.some((c) => c[0] === 'quit')).toBe(false)
+  })
+
+  it('path nulo (fim do arquivo) não dispara nada', async () => {
+    const h = harness()
+    await h.service.play(req(h, { startS: 600 }))
+    const mpv = h.fakes.mpv!
+    mpv.setProp('path', h.fakes.args.at(-1)!)
+    mpv.props.set('time-pos', 605)
+    mpv.emitEvent({ event: 'playback-restart' })
+    await waitFor(() => saved(h)?.positionS === 605)
+    mpv.setProp('path', null)
+    h.tick(5000)
+    mpv.setProp('time-pos', 615)
+    await waitFor(() => saved(h)?.positionS === 615)
+    expect(mpv.commands.some((c) => c[0] === 'quit')).toBe(false)
+  })
+
   it('flushAndStop manda "quit" ao mpv', async () => {
     const h = harness()
     await h.service.play(req(h))
