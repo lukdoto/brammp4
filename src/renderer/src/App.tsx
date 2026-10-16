@@ -47,7 +47,7 @@ export function App() {
         <button onClick={() => setView({ name: 'libraries' })}>Bibliotecas</button>
       </header>
       {view.name === 'home' && <Home refresh={refresh} libraries={libraries} onOpen={(id) => setView({ name: 'title', id })} />}
-      {view.name === 'title' && <TitlePage id={view.id} refresh={refresh} onBack={() => setView({ name: 'home' })} />}
+      {view.name === 'title' && <TitlePage id={view.id} refresh={refresh} onBack={() => setView({ name: 'home' })} onPlay={() => {}} />}
       {view.name === 'libraries' && (
         <Libraries libraries={libraries} progress={progress} summaries={summaries} onChanged={reloadLibraries} />
       )}

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { FileView, TitleDetail } from '../../../shared/types'
-import { codecLabel, itemLabel, resolutionLabel, seasonsOf } from '../format'
+import { resumeStart } from '../../../shared/rules'
+import { ProgressBar } from '../components/ProgressBar'
+import { codecLabel, itemLabel, minutesLabel, progressRatio, resolutionLabel, seasonsOf } from '../format'
 
 function FileBadges({ f }: { f: FileView }) {
   return (
@@ -14,7 +16,7 @@ function FileBadges({ f }: { f: FileView }) {
   )
 }
 
-export function TitlePage({ id, refresh, onBack }: { id: number; refresh: number; onBack: () => void }) {
+export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh: number; onBack: () => void; onPlay: (itemKey: string) => void }) {
   const [detail, setDetail] = useState<TitleDetail | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [season, setSeason] = useState<number | null>(null)
@@ -64,6 +66,9 @@ export function TitlePage({ id, refresh, onBack }: { id: number; refresh: number
         const best = item.files.find((f) => f.available) ?? item.files[0]
         if (!best) return null
         const offline = !item.files.some((f) => f.available)
+        const watched = item.progress?.watched ?? false
+        const ratio = progressRatio(item.progress, best.durationS)
+        const canResume = resumeStart(item.progress?.positionS, watched) > 0
         return (
           <div key={item.key} className={`episode${offline ? ' unavailable' : ''}`}>
             <div className="code">{itemLabel(item.season, item.episode)}</div>
@@ -71,10 +76,16 @@ export function TitlePage({ id, refresh, onBack }: { id: number; refresh: number
               <div>{item.episode !== null ? `Episódio ${item.episode}${item.name ? ` · ${item.name}` : ''}` : detail.name}</div>
               <div>
                 <FileBadges f={best} />
+                {best.durationS ? <span className="badge">{minutesLabel(best.durationS)}</span> : null}
                 {item.files.length > 1 && <span className="badge">{item.files.length} versões</span>}
+                {watched && <span className="badge done">Assistido</span>}
                 {offline && <span className="badge">conecte {best.libraryLabel}</span>}
               </div>
+              {ratio !== undefined && <ProgressBar ratio={ratio} watched={watched} />}
             </div>
+            <button className="primary" disabled={offline} onClick={() => onPlay(item.key)}>
+              {canResume ? 'Continuar' : watched ? 'Assistir de novo' : 'Assistir'}
+            </button>
           </div>
         )
       })}
