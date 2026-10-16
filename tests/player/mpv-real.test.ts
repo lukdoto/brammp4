@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { buildMpvArgs } from '../../src/main/player/args'
 import { MpvClient } from '../../src/main/player/mpv-client'
 import { findExternalSubId, type MpvTrack } from '../../src/main/player/tracks'
 import { uniquePipePath } from '../helpers/fake-mpv'
@@ -15,83 +16,190 @@ const fixture = join(process.cwd(), 'tests', 'fixtures', 'tiny.mkv')
 let child: ChildProcess | undefined
 let client: MpvClient | undefined
 let dir: string | undefined
-afterEach(() => {
+let exited = false
+
+/** Espera o processo terminar (até 5 s); se não terminar, mata de novo. */
+async function stopChild(c: ChildProcess): Promise<void> {
+  if (c.exitCode !== null || c.signalCode !== null) return
+  const done = new Promise<void>((r) => c.once('exit', () => r()))
+  c.kill()
+  await Promise.race([done, sleep(5000)])
+  if (c.exitCode === null && c.signalCode === null) {
+    c.kill('SIGKILL')
+    await Promise.race([done, sleep(2000)])
+  }
+}
+
+afterEach(async () => {
   client?.close()
-  child?.kill()
-  if (dir) rmSync(dir, { recursive: true, force: true })
+  if (child) await stopChild(child)
+  if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   child = client = dir = undefined
 })
+
+/** Cria pasta com acento, [ ], & e =, o vídeo e a legenda externa ao lado. */
+function prepare(): { video: string; srt: string } {
+  dir = mkdtempSync(join(tmpdir(), 'brammp4-mpv-'))
+  const folder = join(dir, 'Séries [teste] & co = x')
+  mkdirSync(folder)
+  const video = join(folder, 'Filme áéí [1].mkv')
+  const srt = join(folder, 'Filme áéí [1].por.srt')
+  copyFileSync(fixture, video)
+  writeFileSync(srt, '1\n00:00:00,000 --> 00:00:01,000\nolá\n')
+  return { video, srt }
+}
+
+function launch(args: string[]): void {
+  exited = false
+  child = spawn(exe, args, { stdio: 'ignore' })
+  child.on('exit', () => (exited = true))
+}
+
+async function connect(pipe: string): Promise<MpvClient> {
+  const c = await MpvClient.connect(pipe, { retries: 200, delayMs: 50, shouldAbort: () => exited })
+  client = c
+  return c
+}
+
+async function waitDuration(c: MpvClient): Promise<unknown> {
+  let duration: unknown
+  for (let i = 0; i < 100 && typeof duration !== 'number'; i++) {
+    duration = await c.getProperty('duration').catch(() => undefined)
+    if (typeof duration !== 'number') await sleep(100)
+  }
+  return duration
+}
+
+/** Espera (limitado) até a legenda externa aparecer na track-list. */
+async function waitTracks(c: MpvClient, srt: string): Promise<{ trackList: MpvTrack[]; extId: number | undefined }> {
+  let trackList: MpvTrack[] = []
+  let extId: number | undefined
+  for (let i = 0; i < 50 && extId === undefined; i++) {
+    trackList = (await c.getProperty('track-list')) as MpvTrack[]
+    extId = findExternalSubId(trackList, srt)
+    if (extId === undefined) await sleep(100)
+  }
+  return { trackList, extId }
+}
 
 // Prova as suposições sobre o protocolo com o mpv de verdade (roda onde o vendor/ foi baixado, inclusive no CI)
 describe.skipIf(!existsSync(exe))('mpv real', () => {
   it('abre arquivo em pasta com acento, [ ], & e =; expõe track-list, aid/sid e reporta o fim (eof)', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'brammp4-mpv-'))
-    const folder = join(dir, 'Séries [teste] & co = x')
-    mkdirSync(folder)
-    const video = join(folder, 'Filme áéí [1].mkv')
-    const srt = join(folder, 'Filme áéí [1].por.srt')
-    copyFileSync(fixture, video)
-    writeFileSync(srt, '1\n00:00:00,000 --> 00:00:01,000\nolá\n')
-
+    const { video, srt } = prepare()
     const pipe = uniquePipePath()
-    let exited = false
-    child = spawn(
-      exe,
-      [
-        `--input-ipc-server=${pipe}`,
-        `--config-dir=${config}`,
-        '--vo=null',
-        '--ao=null',
-        '--pause',
-        '--no-terminal',
-        '--msg-level=all=error',
-        '--osc=no',
-        '--osd-bar=no',
-        '--border=no',
-        '--keep-open=no',
-        '--aid=1',
-        '--sid=no',
-        `--sub-file=${srt}`,
-        '--',
-        video
-      ],
-      { stdio: 'ignore' }
-    )
-    child.on('exit', () => (exited = true))
+    launch([
+      `--input-ipc-server=${pipe}`,
+      `--config-dir=${config}`,
+      '--vo=null',
+      '--ao=null',
+      '--pause',
+      '--no-terminal',
+      '--msg-level=all=error',
+      '--osc=no',
+      '--osd-bar=no',
+      '--border=no',
+      '--keep-open=no',
+      '--aid=1',
+      '--sid=no',
+      `--sub-file=${srt}`,
+      '--',
+      video
+    ])
 
-    client = await MpvClient.connect(pipe, { retries: 200, delayMs: 50, shouldAbort: () => exited })
+    const c = await connect(pipe)
     const events: Record<string, unknown>[] = []
-    client.on('event', (m: Record<string, unknown>) => events.push(m))
-    client.start()
+    c.on('event', (m: Record<string, unknown>) => events.push(m))
+    c.start()
 
-    // espera o arquivo carregar
-    let duration: unknown
-    for (let i = 0; i < 100 && typeof duration !== 'number'; i++) {
-      duration = await client.getProperty('duration').catch(() => undefined)
-      if (typeof duration !== 'number') await sleep(100)
-    }
+    const duration = await waitDuration(c)
     expect(duration).toBeGreaterThan(0.5)
     expect(duration).toBeLessThan(2)
 
-    const trackList = (await client.getProperty('track-list')) as MpvTrack[]
+    const { trackList, extId } = await waitTracks(c, srt)
     const audio = trackList.find((t) => t.type === 'audio')
     expect(audio).toMatchObject({ id: 1, lang: 'por' })
     expect(trackList.find((t) => t.type === 'sub' && t.external === false)).toMatchObject({ id: 1, lang: 'eng' })
     // a legenda externa é achada pelo caminho, mesmo com acento e colchetes
-    const extId = findExternalSubId(trackList, srt)
     expect(extId).toBeDefined()
-    const sid = await client.getProperty('sid')
+    const sid = await c.getProperty('sid')
     expect(sid === false || sid === 'no').toBe(true)
-    expect(await client.getProperty('aid')).toBe(1)
+    expect(await c.getProperty('aid')).toBe(1)
 
     // selecionar a externa funciona
-    await client.setProperty('sid', extId)
-    expect(await client.getProperty('sid')).toBe(extId)
+    await c.setProperty('sid', extId)
+    expect(await c.getProperty('sid')).toBe(extId)
 
-    await client.observe('time-pos')
-    await client.setProperty('pause', false)
+    await c.observe('time-pos')
+    await c.setProperty('pause', false)
     for (let i = 0; i < 150 && !events.some((e) => e.event === 'end-file'); i++) await sleep(100)
     const end = events.find((e) => e.event === 'end-file')
     expect(end).toMatchObject({ reason: 'eof' })
+  }, 30000)
+
+  it('aceita os argumentos montados por buildMpvArgs (produção), com título de caracteres estranhos', async () => {
+    const { video, srt } = prepare()
+    const pipe = uniquePipePath()
+    const args = buildMpvArgs({
+      pipePath: pipe,
+      configDir: config,
+      filePath: video,
+      title: 'Filme: ${x} \\ "aspas" 100%',
+      startS: 0.2,
+      audioId: 1,
+      sid: null,
+      externalSubs: [srt]
+    })
+    // extras para rodar sem janela/áudio, antes do "-- arquivo" final; opções posteriores vencem as anteriores
+    args.splice(args.length - 2, 0, '--vo=null', '--ao=null', '--pause', '--no-terminal', '--msg-level=all=error')
+    launch(args)
+
+    const c = await connect(pipe)
+    c.start()
+    expect(await waitDuration(c)).toBeGreaterThan(0.5)
+    // o mpv não saiu por causa de opção inválida
+    expect(exited).toBe(false)
+    expect(await c.getProperty('aid')).toBe(1)
+
+    const { extId } = await waitTracks(c, srt)
+    expect(extId).toBeDefined()
+    await c.setProperty('sid', extId)
+    expect(await c.getProperty('sid')).toBe(extId)
+
+    const exit = new Promise<void>((r) => child!.once('exit', () => r()))
+    await c.command('quit').catch(() => undefined)
+    await Promise.race([exit, sleep(5000)])
+    expect(exited).toBe(true)
+  }, 30000)
+
+  it('carrega o uosc a partir da pasta de configuração embutida, sem erros', async () => {
+    const { video } = prepare()
+    const log = join(dir!, 'mpv.log')
+    const pipe = uniquePipePath()
+    launch([
+      `--input-ipc-server=${pipe}`,
+      `--config-dir=${config}`,
+      `--log-file=${log}`,
+      '--msg-level=all=error,uosc=v',
+      '--vo=null',
+      '--ao=null',
+      '--pause',
+      '--no-terminal',
+      '--osc=no',
+      '--',
+      video
+    ])
+    const c = await connect(pipe)
+    c.start()
+    expect(await waitDuration(c)).toBeGreaterThan(0.5)
+    const exit = new Promise<void>((r) => child!.once('exit', () => r()))
+    await c.command('quit').catch(() => undefined)
+    await Promise.race([exit, sleep(5000)])
+
+    const text = readFileSync(log, 'utf8')
+    // marcador positivo: o uosc leu o uosc.conf do config-dir (só acontece se main.lua rodou)
+    expect(text).toMatch(/\[v\]\[uosc\] Opened config file script-opts\/uosc\.conf/)
+    // nenhum erro/aviso emitido pelo uosc nem erro de Lua em qualquer script
+    expect(text).not.toMatch(/\[[ewf]\]\[uosc\]/)
+    expect(text).not.toMatch(/lua error|failed to load/i)
   }, 30000)
 })

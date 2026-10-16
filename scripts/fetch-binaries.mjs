@@ -86,6 +86,8 @@ for (const [name, entry] of Object.entries(manifest)) {
         if (top.length === 1 && top[0].isDirectory()) src = join(inner, top[0].name)
       } else if (top.length === 1 && top[0].isDirectory()) src = join(out, top[0].name)
       const target = join(vendor, entry.dest)
+      // sem o carimbo, uma falha no meio da cópia não deixa a pasta parcial passar por "já presente"
+      await rm(stamp, { force: true })
       await rm(target, { recursive: true, force: true })
       await cp(src, target, { recursive: true })
       if (!existsSync(join(target, entry.probe))) throw new Error(`${name}: ${entry.probe} não encontrado depois de extrair`)

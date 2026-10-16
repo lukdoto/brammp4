@@ -14,7 +14,7 @@
     "extractAll": true,
     "dest": "mpv",
     "probe": "mpv.exe",
-    "license": "GPL-2.0-or-later (build de CI oficial do mpv-player/mpv v0.41.0)"
+    "license": "GPL-2.0-or-later (asset oficial da release v0.41.0 do mpv-player/mpv; o zip interno é um build git de 2025-12-21, mpv-git-2025-12-21-41f6a64-x86_64.zip)"
   },
   "mpv-license": {
     "url": "https://raw.githubusercontent.com/mpv-player/mpv/v0.41.0/LICENSE.GPL",
