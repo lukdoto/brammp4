@@ -49,5 +49,14 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE titles ADD COLUMN added_at TEXT;
   UPDATE titles SET added_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE added_at IS NULL;
+  `,
+  `
+  ALTER TABLE titles ADD COLUMN match_source TEXT;
+  ALTER TABLE titles ADD COLUMN tmdb_checked_at TEXT;
+  ALTER TABLE items ADD COLUMN tmdb_name TEXT;
+  CREATE TABLE assignments (
+    library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+    rel_path TEXT NOT NULL, target TEXT NOT NULL, PRIMARY KEY (library_id, rel_path)
+  );
   `
 ]

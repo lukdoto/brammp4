@@ -54,7 +54,13 @@ export interface TitleCard {
   year?: number
   available: boolean
   offlineLabels: string[]
+  /** nome do arquivo no cache de imagens (ex.: w342-abc.jpg), não um caminho */
+  posterFile?: string
 }
+
+export type ReclassifyTarget =
+  | { kind: 'movie'; title: string; year?: number }
+  | { kind: 'episode'; series: string; season: number; episode: number }
 
 export interface Catalog { series: TitleCard[]; movies: TitleCard[]; recent: TitleCard[] }
 
@@ -70,13 +76,25 @@ export interface FileView {
   subCount: number
 }
 
-export interface ItemView { key: string; season: number | null; episode: number | null; name?: string; files: FileView[]; progress?: ProgressView }
+export interface ItemView {
+  key: string
+  season: number | null
+  episode: number | null
+  name?: string
+  overview?: string
+  files: FileView[]
+  progress?: ProgressView
+}
 
 export interface TitleDetail {
   id: number
   kind: 'series' | 'movie'
   name: string
   year?: number
+  overview?: string
+  posterFile?: string
+  backdropFile?: string
+  matchSource?: 'auto' | 'manual'
   items: ItemView[]
 }
 
