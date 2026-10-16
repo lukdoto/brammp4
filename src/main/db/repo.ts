@@ -1,4 +1,4 @@
-import type { Catalog, FileView, ItemView, LibraryStatus, LibraryView, ProbeResult, ProbeTrack, TitleCard, TitleDetail } from '../../shared/types'
+import type { Catalog, FileView, ItemView, LibraryStatus, LibraryView, ProbeResult, ProbeTrack, ProgressView, TitleCard, TitleDetail } from '../../shared/types'
 import type { Db } from './database'
 
 const now = () => new Date().toISOString()
@@ -159,26 +159,45 @@ export function getTitleDetail(db: Db, id: number): TitleDetail | null {
     key: string; season: number | null; episode: number | null; name: string | null
   }[]
   const files = db.prepare(
-    `SELECT f.id, f.item_key, f.rel_path, f.height, f.video_codec, f.missing, l.label, l.status,
+    `SELECT f.id, f.item_key, f.rel_path, f.height, f.video_codec, f.duration_s, f.missing, l.label, l.status,
        (SELECT COUNT(*) FROM tracks tr WHERE tr.file_id = f.id AND tr.type = 'audio') AS audio_count,
        (SELECT COUNT(*) FROM tracks tr WHERE tr.file_id = f.id AND tr.type = 'sub') AS sub_count
      FROM files f JOIN libraries l ON l.id = f.library_id JOIN items i ON i.key = f.item_key
      WHERE i.title_id = ? AND f.missing = 0
      ORDER BY f.height DESC`
   ).all(id) as {
-    id: number; item_key: string; rel_path: string; height: number | null; video_codec: string | null; missing: number
+    id: number; item_key: string; rel_path: string; height: number | null; video_codec: string | null; duration_s: number | null; missing: number
     label: string; status: LibraryStatus; audio_count: number; sub_count: number
   }[]
   const byItem = new Map<string, FileView[]>()
   for (const f of files) {
     const view: FileView = {
       id: f.id, relPath: f.rel_path, libraryLabel: f.label, available: f.status === 'online' && f.missing === 0,
-      height: opt(f.height), videoCodec: opt(f.video_codec), audioCount: f.audio_count, subCount: f.sub_count
+      height: opt(f.height), videoCodec: opt(f.video_codec), durationS: opt(f.duration_s), audioCount: f.audio_count, subCount: f.sub_count
     }
     byItem.set(f.item_key, [...(byItem.get(f.item_key) ?? []), view])
   }
+  const progressRows = db.prepare(
+    `SELECT p.item_key, p.position_s, p.duration_s, p.watched, p.updated_at
+     FROM progress p JOIN items i ON i.key = p.item_key WHERE i.title_id = ?`
+  ).all(id) as unknown as { item_key: string; position_s: number; duration_s: number | null; watched: number; updated_at: string }[]
+  const progressByItem = new Map(
+    progressRows.map((r) => [
+      r.item_key,
+      {
+        positionS: r.position_s,
+        ...(r.duration_s !== null ? { durationS: r.duration_s } : {}),
+        watched: r.watched === 1,
+        updatedAt: r.updated_at
+      } satisfies ProgressView
+    ])
+  )
   const itemViews: ItemView[] = items
     .filter((i) => byItem.has(i.key))
-    .map((i) => ({ key: i.key, season: i.season, episode: i.episode, ...(i.name ? { name: i.name } : {}), files: byItem.get(i.key)! }))
+    .map((i) => ({
+      key: i.key, season: i.season, episode: i.episode, ...(i.name ? { name: i.name } : {}),
+      ...(progressByItem.has(i.key) ? { progress: progressByItem.get(i.key)! } : {}),
+      files: byItem.get(i.key)!
+    }))
   return { id: t.id, kind: t.kind, name: t.name, year: opt(t.year), items: itemViews }
 }

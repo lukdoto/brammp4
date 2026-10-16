@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { openDatabase, type Db } from '../../src/main/db/database'
 import * as repo from '../../src/main/db/repo'
+import { saveProgress } from '../../src/main/db/progress'
+import { seedSeries } from '../helpers/seed'
 
 let db: Db
 beforeEach(() => {
@@ -133,5 +135,16 @@ describe('repo', () => {
     repo.replaceExternalSubs(db, f1, [{ relPath: 'Dark/S1/e1.srt', forced: false, sdh: false, codec: 'srt' }])
     repo.replaceUnmatched(db, 'lib1', [{ relPath: 'x.mkv', reason: 'nome não reconhecido' }])
     expect(repo.librarySummary(db, 'lib1')).toEqual({ series: 1, movies: 0, episodes: 1, subtitles: 1, unmatched: 1 })
+  })
+})
+
+describe('detalhe do título com progresso', () => {
+  it('traz o progresso do episódio e a duração do arquivo', () => {
+    const { db, titleId, keys } = seedSeries()
+    saveProgress(db, { itemKey: keys[1]!, positionS: 400, durationS: 1380, watched: false })
+    const detail = repo.getTitleDetail(db, titleId)!
+    expect(detail.items[0]!.progress).toBeUndefined()
+    expect(detail.items[1]!.progress).toMatchObject({ positionS: 400, durationS: 1380, watched: false })
+    expect(detail.items[0]!.files[0]!.durationS).toBe(1380)
   })
 })
