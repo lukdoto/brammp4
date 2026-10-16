@@ -33,6 +33,8 @@ export class ProgressTracker {
 
   arm(): void {
     this.armed = true
+    // descarta a posição lida durante o carregamento (~0); só vale uma posição lida depois de armar
+    this.position = undefined
   }
 
   get isArmed(): boolean {
@@ -74,9 +76,9 @@ export class ProgressTracker {
       ...(this.duration !== undefined ? { durationS: this.duration } : {}),
       watched: isWatched(this.position, this.duration)
     }
-    this.lastSaveAt = this.opts.now()
+    this.lastSaveAt = this.opts.now() // última tentativa, não última gravação
     if (this.lastSaved && same(this.lastSaved, next)) return
-    this.lastSaved = next
     this.opts.save(next)
+    this.lastSaved = next // só depois de save retornar: se lançar, a próxima tentativa não é suprimida
   }
 }

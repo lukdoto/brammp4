@@ -93,6 +93,50 @@ describe('ProgressTracker', () => {
     }
   })
 
+  it('arm descarta a posição lida antes de armar (flush não grava ~0)', () => {
+    const { tracker, saved } = make()
+    tracker.onTimePos(0.4)
+    tracker.arm()
+    tracker.flush()
+    expect(saved).toEqual([])
+  })
+
+  it('pausar ou sair logo depois de armar, sem posição nova, não grava a posição antiga', () => {
+    const { tracker, saved } = make()
+    tracker.onTimePos(0.4)
+    tracker.arm()
+    tracker.onPause(true)
+    tracker.onEnd('quit')
+    expect(saved).toEqual([])
+  })
+
+  it('a primeira posição gravada depois de armar é a nova, nunca a de antes', () => {
+    const { tracker, saved } = make()
+    tracker.onTimePos(0.4)
+    tracker.arm()
+    tracker.onTimePos(1829)
+    expect(saved.map((s) => s.positionS)).toEqual([1829])
+  })
+
+  it('se save lança, a próxima gravação idêntica não é suprimida como duplicada', () => {
+    const saved: SavedProgress[] = []
+    let fail = true
+    const tracker = new ProgressTracker({
+      save: (p) => {
+        if (fail) {
+          fail = false
+          throw new Error('disco ocupado')
+        }
+        saved.push(p)
+      },
+      now: () => 0
+    })
+    tracker.arm()
+    expect(() => tracker.onTimePos(100)).toThrow('disco ocupado')
+    expect(() => tracker.flush()).not.toThrow()
+    expect(saved.map((s) => s.positionS)).toEqual([100])
+  })
+
   it('flush grava a última posição conhecida mesmo dentro dos 5 s', () => {
     const { tracker, saved, tick } = make()
     tracker.arm()
