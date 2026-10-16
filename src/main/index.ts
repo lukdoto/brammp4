@@ -1,4 +1,6 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, powerMonitor } from 'electron'
+import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ScanSummary } from '../shared/types'
 import { openDatabase } from './db/database'
@@ -7,7 +9,10 @@ import { registerIpc } from './ipc'
 import { LibraryMonitor } from './libraries/monitor'
 import { readMarker } from './libraries/marker'
 import { resolveLibrary } from './libraries/resolve'
-import { binPath, dbPath } from './paths'
+import { binPath, dbPath, mpvConfigDir, mpvPath } from './paths'
+import { newPipePath } from './player/args'
+import { MpvClient } from './player/mpv-client'
+import { PlayerService } from './player/service'
 import { probeFile } from './scanner/probe'
 import { scanLibrary } from './scanner/scan'
 import { createScanScheduler } from './scanner/scheduler'
@@ -76,7 +81,41 @@ function main(): void {
         })
     })
 
-    registerIpc({ db, window: () => win, scan })
+    const player = new PlayerService({
+      db,
+      mpvExe: mpvPath,
+      configDir: mpvConfigDir,
+      spawn: (exe, args) => spawn(exe, args, { stdio: 'ignore' }),
+      connect: (pipe, o) => MpvClient.connect(pipe, o),
+      newPipePath,
+      exists: existsSync,
+      now: Date.now,
+      onState: (s) => {
+        send('player:state', s)
+        if (!s.playing) win?.focus()
+      }
+    })
+
+    registerIpc({ db, window: () => win, scan, player })
+
+    // reforços além da gravação a cada 5 s (o evento 'shutdown' do powerMonitor não existe no Windows):
+    // notebook indo dormir e app sendo fechado com um vídeo tocando
+    powerMonitor.on('suspend', () => player.flush())
+    let quitting = false
+    app.on('before-quit', (e) => {
+      if (quitting || !player.state().playing) return
+      e.preventDefault()
+      quitting = true
+      // app.quit() sempre roda, mesmo se flushAndStop rejeitar; o timer cobre uma promessa que nunca resolve
+      const fallback = setTimeout(() => app.quit(), 3000)
+      void player
+        .flushAndStop()
+        .catch((err) => console.error('[player] flushAndStop falhou', err))
+        .finally(() => {
+          clearTimeout(fallback)
+          app.quit()
+        })
+    })
 
     const monitor = new LibraryMonitor({
       intervalMs: 3000,
@@ -94,6 +133,7 @@ function main(): void {
     app.on('before-quit', () => monitor.stop())
 
     createWindow()
+    win?.on('session-end', () => player.flush())
   }).catch((err) => {
     dialog.showErrorBox('brammp4', 'Não foi possível iniciar: ' + (err instanceof Error ? err.message : String(err)))
     app.quit()
