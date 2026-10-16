@@ -6,6 +6,11 @@ export function dbPath(): string {
   return join(app.getPath('userData'), 'brammp4.db')
 }
 
+/** Cache de capas e fundos do TMDB. */
+export function imagesDir(): string {
+  return join(app.getPath('userData'), 'images')
+}
+
 /** Binário embutido no instalador; em desenvolvimento usa vendor/bin ou o PATH; empacotado nunca cai no PATH. */
 export function binPath(exe: string): string {
   const p = app.isPackaged ? join(process.resourcesPath, 'bin', exe) : join(app.getAppPath(), 'vendor', 'bin', exe)
