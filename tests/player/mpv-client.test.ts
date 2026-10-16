@@ -61,7 +61,7 @@ describe('MpvClient', () => {
   it('eventos enviados antes de start() não se perdem', async () => {
     fake = await FakeMpv.start()
     client = await MpvClient.connect(fake.path)
-    await sleep(30) // dá tempo de o servidor registrar a conexão antes de transmitir
+    await waitFor(() => fake!.clientCount > 0) // o servidor registrou a conexão: o broadcast chega ao cliente
     fake.emitEvent({ event: 'playback-restart' })
     await sleep(30)
     const events: Record<string, unknown>[] = []

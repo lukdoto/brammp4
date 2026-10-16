@@ -20,6 +20,7 @@ afterEach(async () => {
 
 function harness(
   over: {
+    extraArgs?: string[]
     online?: boolean
     exists?: (p: string) => boolean
     mpvExe?: () => string
@@ -56,6 +57,7 @@ function harness(
     },
     connect: (pipe, o) => MpvClient.connect(pipe, { ...o, delayMs: 5, ...(over.commandTimeoutMs ? { commandTimeoutMs: over.commandTimeoutMs } : {}) }),
     exitGraceMs: 20,
+    ...(over.extraArgs ? { extraArgs: over.extraArgs } : {}),
     newPipePath: uniquePipePath,
     exists: over.exists ?? (() => present),
     now: () => clock,
@@ -89,6 +91,17 @@ describe('PlayerService.play: argumentos', () => {
     expect(a).toContain(`--sub-file=${join('E:\\Videos\\Series', 'Dark/Season 1/Dark.S01E01.por.srt')}`)
     expect(a.slice(-2)).toEqual(['--', join('E:\\Videos\\Series', 'Dark/Season 1/Dark.S01E01.mkv')])
     expect(h.states.at(-1)).toMatchObject({ playing: true, itemKey: h.keys[0], label: 'Dark · S01E01' })
+  })
+
+  it('extraArgs entram antes do "--" final; sem eles, nada é acrescentado', async () => {
+    const h = harness({ extraArgs: ['--vo=null', '--pause'] })
+    expect(await h.service.play(req(h))).toEqual({ ok: true })
+    const a = h.fakes.args
+    expect(a.slice(-4)).toEqual(['--vo=null', '--pause', '--', join('E:\\Videos\\Series', 'Dark/Season 1/Dark.S01E01.mkv')])
+    const plain = harness()
+    expect(await plain.service.play(req(plain))).toEqual({ ok: true })
+    expect(plain.fakes.args).not.toContain('--vo=null')
+    expect(plain.fakes.args.at(-2)).toBe('--')
   })
 
   const trio = [
@@ -272,6 +285,20 @@ describe('PlayerService: progresso', () => {
     expect(saved(h)).toBeUndefined()
   })
 
+  it('fechar com Q antes do primeiro playback-restart (disco lento) é "closed", não erro, e não grava nada', async () => {
+    const h = harness()
+    saveProgress(h.db, { itemKey: h.keys[0]!, positionS: 300, durationS: 1380, watched: false })
+    const mpv = await start(h)
+    mpv.setProp('time-pos', 0.2)
+    await sleep(30)
+    mpv.emitEvent({ event: 'end-file', reason: 'quit' })
+    await sleep(30)
+    h.fakes.child!.exitNow(0)
+    await waitFor(() => h.states.at(-1)?.playing === false)
+    expect(h.states.at(-1)?.closedReason).toBe('closed')
+    expect(saved(h)).toMatchObject({ positionS: 300 })
+  })
+
   it('rede de segurança: se o playback-restart nunca chegar, arma depois de 15 s de reprodução', async () => {
     const h = harness()
     const mpv = await start(h)
@@ -368,6 +395,14 @@ describe('PlayerService: ciclo de vida da sessão', () => {
     const h = harness({ props: { 'time-pos': 605, seeking: false, duration: 1380, 'track-list': [] } })
     await h.service.play(req(h, { startS: 600 }))
     await waitFor(() => saved(h)?.positionS === 605)
+  })
+
+  it('syncState lê seeking antes de time-pos (a posição lida já é a de depois da busca)', async () => {
+    const h = harness({ props: { 'time-pos': 605, seeking: false, 'track-list': [] } })
+    await h.service.play(req(h, { startS: 600 }))
+    const gets = h.fakes.mpv!.commands.filter((c) => c[0] === 'get_property').map((c) => c[1])
+    expect(gets.indexOf('seeking')).toBeGreaterThanOrEqual(0)
+    expect(gets.indexOf('seeking')).toBeLessThan(gets.indexOf('time-pos'))
   })
 
   it('syncState não arma enquanto o mpv ainda está buscando (seeking)', async () => {

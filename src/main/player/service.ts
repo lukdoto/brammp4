@@ -33,6 +33,8 @@ export interface PlayerDeps {
   onState: (s: PlayerState) => void
   /** espera entre a saída do processo e o fechamento da sessão, para o end-file em trânsito chegar (padrão 200 ms) */
   exitGraceMs?: number
+  /** argumentos extras para o mpv, inseridos antes do "--" final (testes com o mpv real: --vo=null etc.); padrão nenhum */
+  extraArgs?: string[]
 }
 
 interface Session {
@@ -170,6 +172,8 @@ export class PlayerService {
       sid: sub.kind === 'off' ? 'no' : sub.kind === 'embedded' ? sub.typeIndex : null,
       externalSubs: externalAbs
     })
+    // buildMpvArgs termina sempre em "--", <arquivo>
+    if (this.deps.extraArgs?.length) args.splice(args.length - 2, 0, ...this.deps.extraArgs)
 
     const tracker = new ProgressTracker({
       now: this.deps.now,
@@ -249,8 +253,9 @@ export class PlayerService {
       s.trackList = tl as MpvTrack[]
       await this.applyExternalSub(s)
     }
-    const pos = await client.getProperty('time-pos').catch(() => undefined)
+    // seeking primeiro: se a busca já terminou, a posição lida depois é a de após a busca
     const seeking = await client.getProperty('seeking').catch(() => undefined)
+    const pos = await client.getProperty('time-pos').catch(() => undefined)
     if (typeof pos === 'number' && seeking === false) {
       s.tracker.arm()
       s.tracker.onTimePos(pos) // arm() descarta a posição anterior: alimenta a posição lida agora
@@ -383,7 +388,9 @@ export class PlayerService {
       : !this.deps.exists(s.absPath)
       ? 'disconnected'
       : !s.tracker.isArmed
-        ? 'error'
+        ? s.endReason === 'quit'
+          ? 'closed' // o usuário fechou antes de a reprodução começar (disco lento): não é falha
+          : 'error'
         : s.endReason === 'eof'
           ? 'ended'
           : 'closed'

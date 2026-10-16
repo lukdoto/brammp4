@@ -12,7 +12,7 @@ const ERRORS: Record<PlayError, string> = {
   'start-failed': 'Não foi possível iniciar o reprodutor.'
 }
 
-export function PlayPanel({ itemKey, onClose }: { itemKey: string; onClose: () => void }) {
+export function PlayPanel({ itemKey, playing, onClose }: { itemKey: string; playing: boolean; onClose: () => void }) {
   const [opts, setOpts] = useState<PlayOptions | null | undefined>(undefined)
   const [fileId, setFileId] = useState<number | null>(null)
   const [audio, setAudio] = useState('')
@@ -50,6 +50,8 @@ export function PlayPanel({ itemKey, onClose }: { itemKey: string; onClose: () =
 
   const file = opts?.files.find((f) => f.fileId === fileId)
   const versions = opts?.files.filter((f) => f.available) ?? []
+  // com o mpv aberto, o processo principal recusaria o pedido: os botões de início ficam desabilitados
+  const cannotStart = busy || playing || !file?.available
 
   async function start(startS: number): Promise<void> {
     if (!opts || !file) return
@@ -129,18 +131,19 @@ export function PlayPanel({ itemKey, onClose }: { itemKey: string; onClose: () =
               </>
             )}
 
+            {playing && <p className="error">{ERRORS['already-playing']}</p>}
             {error && <p className="error">{error}</p>}
 
             <div className="actions">
               {opts.resumeFromS > 0 ? (
                 <>
-                  <button className="primary" disabled={busy || !file?.available} onClick={() => void start(opts.resumeFromS)}>
+                  <button className="primary" disabled={cannotStart} onClick={() => void start(opts.resumeFromS)}>
                     Continuar de {formatClock(opts.resumeFromS)}
                   </button>
-                  <button disabled={busy || !file?.available} onClick={() => void start(0)}>Começar do início</button>
+                  <button disabled={cannotStart} onClick={() => void start(0)}>Começar do início</button>
                 </>
               ) : (
-                <button className="primary" disabled={busy || !file?.available} onClick={() => void start(0)}>Assistir</button>
+                <button className="primary" disabled={cannotStart} onClick={() => void start(0)}>Assistir</button>
               )}
               <button onClick={onClose}>Cancelar</button>
             </div>

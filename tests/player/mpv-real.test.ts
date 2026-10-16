@@ -3,11 +3,16 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { openDatabase } from '../../src/main/db/database'
+import { getProgress } from '../../src/main/db/progress'
+import * as repo from '../../src/main/db/repo'
 import { buildMpvArgs } from '../../src/main/player/args'
 import { MpvClient } from '../../src/main/player/mpv-client'
+import { PlayerService } from '../../src/main/player/service'
 import { findExternalSubId, type MpvTrack } from '../../src/main/player/tracks'
+import type { PlayerState } from '../../src/shared/types'
 import { uniquePipePath } from '../helpers/fake-mpv'
-import { sleep } from '../helpers/wait'
+import { sleep, waitFor } from '../helpers/wait'
 
 const exe = join(process.cwd(), 'vendor', 'mpv', 'mpv.exe')
 const config = join(process.cwd(), 'vendor', 'mpv-config')
@@ -221,6 +226,54 @@ describe.skipIf(!existsSync(exe))('mpv real', () => {
     // nenhuma opção desconhecida/inválida no mpv.conf nem tecla/comando inválido no input.conf
     expect(text).not.toMatch(/Error parsing option|Option .* not found|unknown option|Setting commandline option .* failed/i)
     expect(text).not.toMatch(/\]\[[ewf]\]\[(cplayer|input|options|cfg|global)\]/)
+  }, 30000)
+
+  it('PlayerService com o mpv real: com --start, playback-restart e time-pos chegam e o ponto gravado é o de início', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'brammp4-svc-'))
+    const root = join(dir, 'Séries [hd] & co')
+    const relPath = 'Dark [2017]/Temporada 1/Dark áé S01E01 [1080p].mkv'
+    mkdirSync(join(root, 'Dark [2017]', 'Temporada 1'), { recursive: true })
+    copyFileSync(fixture, join(root, relPath))
+
+    const db = openDatabase(':memory:')
+    repo.upsertLibrary(db, { id: 'lib1', label: 'HD Séries', rootPath: root })
+    const titleId = repo.upsertTitle(db, { kind: 'series', localKey: 'series:dark', name: 'Dark' })
+    const itemKey = 'local:dark:S01E01'
+    repo.upsertItem(db, { key: itemKey, titleId, season: 1, episode: 1 })
+    const fileId = repo.upsertFile(db, { itemKey, libraryId: 'lib1', relPath, size: 1, mtimeMs: 1, probe: { durationS: 1, height: 1080, videoCodec: 'h264', tracks: [] } })
+
+    let spawned: ChildProcess | undefined
+    const states: PlayerState[] = []
+    const service = new PlayerService({
+      db,
+      mpvExe: () => exe,
+      configDir: () => config,
+      spawn: (file, args) => {
+        spawned = spawn(file, args, { stdio: 'ignore' })
+        child = spawned // o afterEach mata se algo der errado
+        return spawned
+      },
+      connect: (pipe, o) => MpvClient.connect(pipe, { ...o, retries: 200, delayMs: 50 }),
+      newPipePath: uniquePipePath,
+      exists: existsSync,
+      now: Date.now,
+      onState: (s) => states.push(s),
+      extraArgs: ['--vo=null', '--ao=null', '--pause', '--no-terminal', '--msg-level=all=error']
+    })
+
+    expect(await service.play({ itemKey, fileId, startS: 0.5, selection: { audioTypeIndex: null, sub: { kind: 'off' } } })).toEqual({ ok: true })
+    await waitFor(() => getProgress(db, itemKey) !== undefined, 10000)
+    const p = getProgress(db, itemKey)!
+    expect(p.positionS).toBeGreaterThanOrEqual(0.4) // o ponto de início, nunca ~0
+    expect(p.positionS).toBeLessThan(1)
+
+    const exit = new Promise<void>((r) => (spawned!.exitCode !== null ? r() : spawned!.once('exit', () => r())))
+    await service.flushAndStop()
+    await Promise.race([exit, sleep(5000)])
+    expect(spawned!.exitCode !== null || spawned!.signalCode !== null).toBe(true) // nenhum mpv.exe sobrou
+    expect(states.at(-1)).toMatchObject({ playing: false, closedReason: 'closed' })
+    expect(getProgress(db, itemKey)!.positionS).toBeGreaterThanOrEqual(0.4)
+    db.close()
   }, 30000)
 
   it('carrega o uosc a partir da pasta de configuração embutida, sem erros', async () => {

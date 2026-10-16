@@ -12,6 +12,8 @@ header.top { display: flex; align-items: center; gap: 16px; padding: 16px 48px; 
 header.top .logo { color: var(--accent); font-weight: 800; font-size: 26px; letter-spacing: 1px; cursor: pointer; }
 header.top .spacer { flex: 1; }
 main { padding: 0 48px 48px; }
+/* avisos fora do <main>: mesmo recuo lateral para não encostar nas bordas da janela */
+.banners { padding: 0 48px; }
 .banner { background: #2a2a2a; border-left: 4px solid #e5a00d; padding: 10px 14px; margin: 0 0 16px; }
 .row h2 { font-size: 20px; margin: 24px 0 10px; }
 .cards { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }

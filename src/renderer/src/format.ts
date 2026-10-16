@@ -30,6 +30,7 @@ export function plural(n: number, one: string, many: string): string {
 }
 
 export function formatClock(totalS: number): string {
+  if (!Number.isFinite(totalS)) return '0:00'
   const s = Math.max(0, Math.floor(totalS))
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
@@ -47,7 +48,7 @@ export function progressRatio(p: Pick<ProgressView, 'positionS' | 'durationS' | 
   if (!p) return undefined
   if (p.watched) return 1
   const d = p.durationS ?? fallbackDurationS
-  if (!d || d <= 0) return undefined
+  if (d === undefined || !Number.isFinite(d) || d <= 0 || !Number.isFinite(p.positionS)) return undefined
   return Math.min(1, Math.max(0, p.positionS / d))
 }
 

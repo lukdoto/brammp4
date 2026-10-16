@@ -8,7 +8,7 @@ import { TitlePage } from './pages/TitlePage'
 type View = { name: 'home' } | { name: 'title'; id: number } | { name: 'libraries' }
 
 const CLOSED_NOTICES: Partial<Record<NonNullable<PlayerState['closedReason']>, string>> = {
-  disconnected: 'O disco foi desconectado durante a reprodução. Seu ponto foi salvo.',
+  disconnected: 'O disco foi desconectado durante a reprodução. O último ponto gravado foi mantido.',
   error: 'Não foi possível reproduzir este vídeo.'
 }
 
@@ -70,10 +70,18 @@ export function App() {
         <span className="spacer" />
         <button onClick={() => setView({ name: 'libraries' })}>Bibliotecas</button>
       </header>
-      {player.playing && (
-        <div className="banner now-playing">Reproduzindo: {player.label}. Feche o player (tecla Q ou o X da janela) para voltar ao catálogo.</div>
+      {(player.playing || notice) && (
+        <div className="banners">
+          {player.playing && (
+            <div className="banner now-playing">Reproduzindo: {player.label}. Feche o player (tecla Q ou o X da janela) para voltar ao catálogo.</div>
+          )}
+          {notice && (
+            <div className="banner warn" role="status" onClick={() => setNotice(null)}>
+              {notice}
+            </div>
+          )}
+        </div>
       )}
-      {notice && <div className="banner warn" onClick={() => setNotice(null)}>{notice}</div>}
       {view.name === 'home' && (
         <Home refresh={refresh} libraries={libraries} onOpen={(id) => setView({ name: 'title', id })} onPlay={setPlayItem} />
       )}
@@ -83,7 +91,7 @@ export function App() {
       {view.name === 'libraries' && (
         <Libraries libraries={libraries} progress={progress} summaries={summaries} onChanged={reloadLibraries} />
       )}
-      {playItem && <PlayPanel key={playItem} itemKey={playItem} onClose={closePanel} />}
+      {playItem && <PlayPanel key={playItem} itemKey={playItem} playing={player.playing} onClose={closePanel} />}
     </>
   )
 }

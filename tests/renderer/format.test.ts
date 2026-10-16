@@ -36,6 +36,9 @@ describe('relógio e progresso', () => {
     expect(formatClock(1834)).toBe('30:34')
     expect(formatClock(3725)).toBe('1:02:05')
     expect(formatClock(-4)).toBe('0:00')
+    expect(formatClock(Number.NaN)).toBe('0:00')
+    expect(formatClock(Number.POSITIVE_INFINITY)).toBe('0:00')
+    expect(formatClock(Number.NEGATIVE_INFINITY)).toBe('0:00')
   })
   it('minutesLabel', () => {
     expect(minutesLabel(1380)).toBe('23 min')
@@ -49,6 +52,10 @@ describe('relógio e progresso', () => {
     expect(progressRatio({ positionS: 10, watched: false })).toBeUndefined()
     expect(progressRatio({ positionS: 5, durationS: 1380, watched: true })).toBe(1)
     expect(progressRatio({ positionS: 2000, durationS: 1380, watched: false })).toBe(1)
+    expect(progressRatio({ positionS: Number.NaN, durationS: 1380, watched: false })).toBeUndefined()
+    expect(progressRatio({ positionS: 10, durationS: Number.POSITIVE_INFINITY, watched: false })).toBeUndefined()
+    expect(progressRatio({ positionS: 10, durationS: Number.NaN, watched: false })).toBeUndefined()
+    expect(progressRatio({ positionS: Number.POSITIVE_INFINITY, durationS: 1380, watched: false })).toBeUndefined()
   })
   it('rótulos de faixas', () => {
     expect(langName('por')).toBe('Português')
