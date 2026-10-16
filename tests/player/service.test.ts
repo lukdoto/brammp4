@@ -29,6 +29,8 @@ function harness(
     props?: Record<string, unknown>
     commandTimeoutMs?: number
     throwOnState?: boolean
+    /** o spawn não cria FakeMpv: o pipe nunca existe e o connect segue tentando */
+    noServer?: boolean
   } = {}
 ) {
   const seeded = seedSeries({ online: over.online })
@@ -43,10 +45,12 @@ function harness(
     spawn: (_exe, args) => {
       fakes.args = args
       const pipe = args.find((a) => a.startsWith('--input-ipc-server='))!.slice('--input-ipc-server='.length)
-      fakes.mpv = new FakeMpv(pipe)
-      created.mpv.push(fakes.mpv)
-      for (const c of over.silent ?? []) fakes.mpv.silentCommands.add(c)
-      for (const [k, v] of Object.entries(over.props ?? {})) fakes.mpv.props.set(k, v)
+      if (!over.noServer) {
+        fakes.mpv = new FakeMpv(pipe)
+        created.mpv.push(fakes.mpv)
+        for (const c of over.silent ?? []) fakes.mpv.silentCommands.add(c)
+        for (const [k, v] of Object.entries(over.props ?? {})) fakes.mpv.props.set(k, v)
+      }
       fakes.child = new FakeChild()
       return fakes.child
     },
@@ -391,6 +395,30 @@ describe('PlayerService: ciclo de vida da sessão', () => {
     expect(Date.now() - t0).toBeLessThan(1000)
     expect(h.fakes.child!.killed).toBe(true)
     expect(h.service.state().playing).toBe(false)
+  })
+})
+
+describe('PlayerService.active', () => {
+  it('é falso no início, verdadeiro logo após play() (antes de aguardar), durante e falso depois de finalizar', async () => {
+    const h = harness()
+    expect(h.service.active()).toBe(false)
+    const p = h.service.play(req(h))
+    expect(h.service.active()).toBe(true)
+    expect(await p).toEqual({ ok: true })
+    expect(h.service.active()).toBe(true)
+    await h.service.flushAndStop()
+    expect(h.service.active()).toBe(false)
+  })
+
+  it('fechar o app com o mpv lançado mas ainda sem pipe mata o processo e o play() falha', async () => {
+    const h = harness({ noServer: true })
+    const p = h.service.play(req(h))
+    await waitFor(() => h.fakes.child !== undefined)
+    expect(h.service.active()).toBe(true)
+    await h.service.flushAndStop()
+    expect(h.fakes.child!.killed).toBe(true)
+    expect(await p).toEqual({ ok: false, error: 'start-failed' })
+    expect(h.service.active()).toBe(false)
   })
 })
 

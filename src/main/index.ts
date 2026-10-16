@@ -18,6 +18,7 @@ import { scanLibrary } from './scanner/scan'
 import { createScanScheduler } from './scanner/scheduler'
 
 let win: BrowserWindow | null = null
+let quitting = false
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -92,7 +93,7 @@ function main(): void {
       now: Date.now,
       onState: (s) => {
         send('player:state', s)
-        if (!s.playing) win?.focus()
+        if (!s.playing && !quitting && win && !win.isDestroyed()) win.focus()
       }
     })
 
@@ -101,20 +102,31 @@ function main(): void {
     // reforços além da gravação a cada 5 s (o evento 'shutdown' do powerMonitor não existe no Windows):
     // notebook indo dormir e app sendo fechado com um vídeo tocando
     powerMonitor.on('suspend', () => player.flush())
-    let quitting = false
+    let quitDone = false
     app.on('before-quit', (e) => {
-      if (quitting || !player.state().playing) return
+      if (quitDone) return
+      if (quitting) {
+        // outro pedido de saída enquanto grava/encerra o mpv: espera terminar
+        e.preventDefault()
+        return
+      }
+      if (!player.active()) return
       e.preventDefault()
       quitting = true
-      // app.quit() sempre roda, mesmo se flushAndStop rejeitar; o timer cobre uma promessa que nunca resolve
-      const fallback = setTimeout(() => app.quit(), 3000)
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
+        clearTimeout(fallback)
+        quitDone = true
+        app.quit()
+      }
+      // finish sempre roda, mesmo se flushAndStop rejeitar; o timer cobre uma promessa que nunca resolve
+      const fallback = setTimeout(finish, 3000)
       void player
         .flushAndStop()
         .catch((err) => console.error('[player] flushAndStop falhou', err))
-        .finally(() => {
-          clearTimeout(fallback)
-          app.quit()
-        })
+        .finally(finish)
     })
 
     const monitor = new LibraryMonitor({

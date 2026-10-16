@@ -66,6 +66,11 @@ export class PlayerService {
     return s?.live ? { playing: true, itemKey: s.itemKey, label: s.label } : { playing: false }
   }
 
+  /** Há um start() em andamento ou uma sessão (mesmo ainda sem pipe): o app não pode sair sem chamar flushAndStop. */
+  active(): boolean {
+    return this.starting || this.session !== undefined
+  }
+
   async play(req: PlayRequest): Promise<PlayResult> {
     if (this.session || this.starting) return { ok: false, error: 'already-playing' }
     this.starting = true
