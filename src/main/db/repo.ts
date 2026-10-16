@@ -35,10 +35,10 @@ export function setLastScan(db: Db, id: string): void {
 
 export function upsertTitle(db: Db, t: { kind: 'series' | 'movie'; localKey: string; name: string; year?: number }): number {
   db.prepare(
-    `INSERT INTO titles (kind, local_key, name, year) VALUES (?, ?, ?, ?)
+    `INSERT INTO titles (kind, local_key, name, year, added_at) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(local_key) DO UPDATE SET name = excluded.name, year = COALESCE(excluded.year, titles.year)
      WHERE titles.tmdb_id IS NULL`
-  ).run(t.kind, t.localKey, t.name, t.year ?? null)
+  ).run(t.kind, t.localKey, t.name, t.year ?? null, now())
   return (db.prepare('SELECT id FROM titles WHERE local_key = ?').get(t.localKey) as { id: number }).id
 }
 
@@ -117,6 +117,7 @@ export function librarySummary(db: Db, libraryId: string) {
   const base = `FROM titles t JOIN items i ON i.title_id = t.id JOIN files f ON f.item_key = i.key WHERE f.library_id = ? AND f.missing = 0`
   return {
     series: count(`SELECT COUNT(DISTINCT t.id) AS n ${base} AND t.kind = 'series'`),
+    seasons: count(`SELECT COUNT(DISTINCT t.id || ':' || i.season) AS n ${base} AND t.kind = 'series' AND i.season IS NOT NULL`),
     movies: count(`SELECT COUNT(DISTINCT t.id) AS n ${base} AND t.kind = 'movie'`),
     episodes: count(`SELECT COUNT(DISTINCT i.key) AS n ${base} AND t.kind = 'series'`),
     subtitles: count(
@@ -127,27 +128,28 @@ export function librarySummary(db: Db, libraryId: string) {
   }
 }
 
-interface CatalogRow { id: number; kind: 'series' | 'movie'; name: string; year: number | null; label: string; status: LibraryStatus; missing: number }
+interface CatalogRow { id: number; kind: 'series' | 'movie'; name: string; year: number | null; label: string; status: LibraryStatus; missing: number; added_at: string | null }
 
 export function getCatalog(db: Db): Catalog {
   const rows = db.prepare(
-    `SELECT t.id, t.kind, t.name, t.year, l.label, l.status, f.missing
+    `SELECT t.id, t.kind, t.name, t.year, t.added_at, l.label, l.status, f.missing
      FROM titles t JOIN items i ON i.title_id = t.id JOIN files f ON f.item_key = i.key JOIN libraries l ON l.id = f.library_id
      WHERE f.missing = 0`
   ).all() as unknown as CatalogRow[]
-  const cards = new Map<number, TitleCard & { visible: boolean }>()
+  type Card = TitleCard & { visible: boolean; addedAt: string }
+  const cards = new Map<number, Card>()
   for (const r of rows) {
-    const c = cards.get(r.id) ?? { id: r.id, kind: r.kind, name: r.name, year: opt(r.year), available: false, offlineLabels: [], visible: false }
+    const c = cards.get(r.id) ?? { id: r.id, kind: r.kind, name: r.name, year: opt(r.year), available: false, offlineLabels: [], visible: false, addedAt: r.added_at ?? '' }
     if (r.status === 'online') c.available = true
     else if (!c.offlineLabels.includes(r.label)) c.offlineLabels.push(r.label)
     c.visible = true
     cards.set(r.id, c)
   }
-  const list = [...cards.values()]
-    .filter((c) => c.visible)
-    .map(({ visible: _v, ...c }) => c)
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-  return { series: list.filter((c) => c.kind === 'series'), movies: list.filter((c) => c.kind === 'movie') }
+  const all = [...cards.values()].filter((c) => c.visible)
+  const strip = ({ visible: _v, addedAt: _a, ...c }: Card): TitleCard => c
+  const list = all.map(strip).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  const recent = [...all].sort((a, b) => b.addedAt.localeCompare(a.addedAt) || a.name.localeCompare(b.name, 'pt-BR')).slice(0, 12).map(strip)
+  return { series: list.filter((c) => c.kind === 'series'), movies: list.filter((c) => c.kind === 'movie'), recent }
 }
 
 export function getTitleDetail(db: Db, id: number): TitleDetail | null {

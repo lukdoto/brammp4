@@ -42,7 +42,7 @@ export function Home({
   onOpen: (id: number) => void
   onPlay: (itemKey: string) => void
 }) {
-  const [catalog, setCatalog] = useState<Catalog>({ series: [], movies: [] })
+  const [catalog, setCatalog] = useState<Catalog>({ series: [], movies: [], recent: [] })
   const [continueCards, setContinueCards] = useState<ContinueCard[]>([])
   useEffect(() => {
     let cancelled = false
@@ -64,6 +64,7 @@ export function Home({
           <div className="cards">{continueCards.map((c) => <ContinueCardView key={c.titleId} card={c} onPlay={onPlay} />)}</div>
         </section>
       )}
+      <Row title="Adicionados recentemente" cards={catalog.recent} onOpen={onOpen} />
       <Row title="Séries" cards={catalog.series} onOpen={onOpen} />
       <Row title="Filmes" cards={catalog.movies} onOpen={onOpen} />
     </main>

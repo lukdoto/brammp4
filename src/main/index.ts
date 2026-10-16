@@ -74,7 +74,7 @@ function main(): void {
         })
         .catch((err): ScanSummary => {
           console.error('[scan] falhou', id, err)
-          return { libraryId: id, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, subtitles: 0, unmatched: 0 }
+          return { libraryId: id, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, seasons: 0, subtitles: 0, unmatched: 0 }
         })
         .then((s) => {
           send('scan:done', s)

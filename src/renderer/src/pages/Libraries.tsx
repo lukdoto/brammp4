@@ -13,7 +13,7 @@ function SummaryLine({ s }: { s: ScanSummary }) {
   if (s.aborted) return <div className="summary error">Varredura interrompida. Confira a conexão do disco e tente novamente.</div>
   return (
     <div className="summary">
-      {plural(s.series, 'série', 'séries')} · {plural(s.episodes, 'episódio', 'episódios')} · {plural(s.movies, 'filme', 'filmes')} · {plural(s.subtitles, 'legenda', 'legendas')}
+      {plural(s.series, 'série', 'séries')} · {plural(s.seasons, 'temporada', 'temporadas')} · {plural(s.episodes, 'episódio', 'episódios')} · {plural(s.movies, 'filme', 'filmes')} · {plural(s.subtitles, 'legenda', 'legendas')}
       {s.unmatched > 0 && ` · ${s.unmatched} não identificados`}
     </div>
   )

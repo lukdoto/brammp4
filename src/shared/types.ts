@@ -42,6 +42,7 @@ export interface ScanSummary {
   series: number
   movies: number
   episodes: number
+  seasons: number
   subtitles: number
   unmatched: number
 }
@@ -55,7 +56,7 @@ export interface TitleCard {
   offlineLabels: string[]
 }
 
-export interface Catalog { series: TitleCard[]; movies: TitleCard[] }
+export interface Catalog { series: TitleCard[]; movies: TitleCard[]; recent: TitleCard[] }
 
 export interface FileView {
   id: number
