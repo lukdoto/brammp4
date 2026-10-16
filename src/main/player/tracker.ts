@@ -13,7 +13,10 @@ export interface TrackerOptions {
   intervalMs?: number
 }
 
-const same = (a: SavedProgress, b: SavedProgress) => a.positionS === b.positionS && a.durationS === b.durationS && a.watched === b.watched
+/** No `eof`, só pula para a duração se a última posição conhecida estiver a até 30 s do fim (ou já assistida). */
+export const EOF_SNAP_WINDOW_S = 30
+
+const same =(a: SavedProgress, b: SavedProgress) => a.positionS === b.positionS && a.durationS === b.durationS && a.watched === b.watched
 
 /**
  * Decide quando gravar o progresso. Nada é gravado antes de arm() (o `playback-restart` do mpv):
@@ -60,9 +63,16 @@ export class ProgressTracker {
     if (v === true) this.saveNow()
   }
 
-  /** `eof` leva a posição até o fim (assistido); qualquer outro motivo só grava onde estava. */
+  /**
+   * `eof` leva a posição até o fim (assistido) só se ela já estava perto do fim ou já contava como assistida:
+   * um disco arrancado costuma aparecer como `eof` no meio do vídeo e não pode virar "assistido".
+   * Qualquer outro motivo só grava onde estava.
+   */
   onEnd(reason: unknown): void {
-    if (reason === 'eof' && this.armed && this.duration !== undefined) this.position = this.duration
+    if (reason === 'eof' && this.armed && this.duration !== undefined && this.position !== undefined) {
+      const nearEnd = this.duration - this.position <= EOF_SNAP_WINDOW_S
+      if (nearEnd || isWatched(this.position, this.duration)) this.position = this.duration
+    }
     this.saveNow()
   }
 

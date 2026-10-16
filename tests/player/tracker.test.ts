@@ -82,6 +82,41 @@ describe('ProgressTracker', () => {
     expect(saved.at(-1)).toEqual({ positionS: 1380, durationS: 1380, watched: true })
   })
 
+  it('eof longe do fim (disco arrancado lido como eof): grava a última posição, não vira assistido', () => {
+    const { tracker, saved } = make()
+    tracker.arm()
+    tracker.onDuration(2700)
+    tracker.onTimePos(1200)
+    tracker.onEnd('eof')
+    expect(saved.at(-1)).toEqual({ positionS: 1200, durationS: 2700, watched: false })
+  })
+
+  it('eof a menos de 30 s do fim: vai até a duração', () => {
+    const { tracker, saved } = make()
+    tracker.arm()
+    tracker.onDuration(2700)
+    tracker.onTimePos(2680)
+    tracker.onEnd('eof')
+    expect(saved.at(-1)).toEqual({ positionS: 2700, durationS: 2700, watched: true })
+  })
+
+  it('eof já assistido pela regra (90%): vai até a duração', () => {
+    const { tracker, saved } = make()
+    tracker.arm()
+    tracker.onDuration(2700)
+    tracker.onTimePos(2430)
+    tracker.onEnd('eof')
+    expect(saved.at(-1)).toEqual({ positionS: 2700, durationS: 2700, watched: true })
+  })
+
+  it('eof sem duração conhecida: grava a última posição como antes', () => {
+    const { tracker, saved } = make()
+    tracker.arm()
+    tracker.onTimePos(1200)
+    tracker.onEnd('eof')
+    expect(saved.at(-1)).toEqual({ positionS: 1200, watched: false })
+  })
+
   it('fim por quit/stop/error: grava a última posição, sem forçar o fim', () => {
     for (const reason of ['quit', 'stop', 'error']) {
       const { tracker, saved } = make()
