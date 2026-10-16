@@ -15,7 +15,7 @@ irm https://raw.githubusercontent.com/lukdoto/brammp4/main/scripts/install.ps1 |
 ```
 
 O script baixa o instalador da última release e instala em modo silencioso para o usuário atual. O instalador já contém ffprobe, mpv e uosc (licenças em `resources/`): o texto da licença GPL do ffmpeg/ffprobe fica em `resources/bin/LICENSE`, o do mpv em `resources/mpv/LICENSE.GPL` e o do uosc em `resources/mpv-config/LICENSE-uosc.txt`.
-Origem dos players embutidos: o mpv é o build de CI oficial de github.com/mpv-player/mpv (release v0.41.0, build x86_64 de 2025-12-21; GPL; código-fonte no mesmo repositório e tag); o uosc 5.13.0 vem de github.com/tomasklaen/uosc (LGPL; mesmo repositório e tag); o ffprobe vem do FFmpeg essentials build 9.0.2 do Gyan (GPL; código-fonte na página da mesma release, github.com/GyanD/codexffmpeg).
+Origem dos players embutidos: o mpv é o build de CI oficial do projeto mpv (GPL; código-fonte em github.com/mpv-player/mpv (commit 41f6a64, build de 2025-12-21 distribuído como asset da release v0.41.0); o executável se identifica como `v0.41.0-dev-g41f6a6450`); o uosc 5.13.0 vem de github.com/tomasklaen/uosc (LGPL; mesmo repositório e tag); o ffprobe vem do FFmpeg essentials build 9.0.2 do Gyan (GPL; código-fonte na página da mesma release, github.com/GyanD/codexffmpeg).
 Na primeira abertura, o app pede a pasta do catálogo no disco removível. Para atualizar, rode o mesmo comando.
 Os dados (banco, progresso) ficam em `%APPDATA%\brammp4` e não são apagados na atualização.
 
@@ -23,7 +23,7 @@ Os dados (banco, progresso) ficam em `%APPDATA%\brammp4` e não são apagados na
 
 ```powershell
 npm ci
-npm run binaries   # baixa ffprobe para vendor/bin
+npm run binaries   # baixa ffprobe, mpv e uosc para vendor/
 npm run dev
 npm test
 ```

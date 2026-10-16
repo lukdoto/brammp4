@@ -245,7 +245,7 @@ Regras:
 | Situação | Comportamento |
 |---|---|
 | HD desconectado durante o vídeo | mpv encerra; o app grava a última posição e avisa "HD desconectado" |
-| Arquivo não encontrado ao dar play | Revarre aquela biblioteca; se continuar faltando, mostra outras versões ou o aviso |
+| Arquivo não encontrado ao dar play | Mostra o aviso e orienta revarrer a biblioteca; a revarredura automática fica para o M5 |
 | mpv ou ffprobe ausente na instalação | Não deveria ocorrer (vão dentro do instalador); se ocorrer, tela de erro pedindo reinstalação |
 | ffprobe falha num arquivo | Arquivo continua reproduzível; faixas aparecem como "desconhecidas" |
 | TMDB fora do ar ou sem internet | Usa o cache; tenta de novo depois, sem mensagem bloqueante |
@@ -268,9 +268,9 @@ Princípio: quem instala não monta nada. Todas as dependências vão dentro do 
 Conteúdo do instalador (`brammp4-Setup-<versão>.exe`, NSIS, instalação por usuário, sem pedir administrador):
 
 - o app Electron (Node e Chromium já embutidos);
-- `resources/bin/mpv.exe` (build portátil para Windows x64);
-- `resources/bin/ffprobe.exe` e `ffmpeg.exe` (builds estáticos);
-- `resources/mpv-config/` com o uosc e o `mpv.conf` do app.
+- `resources/mpv/mpv.exe` e DLLs (build de CI oficial do mpv: código-fonte em github.com/mpv-player/mpv, commit 41f6a64, build de 2025-12-21 distribuído como asset da release v0.41.0; Windows x64);
+- `resources/bin/ffprobe.exe` (build estático);
+- `resources/mpv-config/` com o uosc e a configuração do app (`mpv.conf`, `input.conf`, `script-opts/uosc.conf`, versionados em `app-config/mpv/` e copiados por cima do uosc baixado).
 
 Os binários não ficam no git. O script `scripts/fetch-binaries.mjs` baixa versões fixadas (URL + SHA-256 conferido)
 para `vendor/` antes do empacotamento; o mesmo script é usado em desenvolvimento.
@@ -309,6 +309,6 @@ Cada marco termina com uma release instalável pelo processo da seção 14.
 
 - Se o escopo `drive.appdata` é classificado pelo Google como sensível, e o efeito disso no aviso de "app não verificado"
   e na validade do refresh token enquanto o projeto do Google Cloud estiver em modo "Teste" (há relatos de expiração em 7 dias).
-- Resolvido no M2: mpv = build de CI oficial do `mpv-player/mpv` v0.41.0 (`x86_64-w64-mingw32`, SHA-256 fixado em `scripts/binaries.json`); uosc 5.13.0. Os textos de licença (mpv GPL e uosc) vão dentro do instalador.
+- Resolvido no M2: mpv = build de CI oficial do projeto mpv, código-fonte em github.com/mpv-player/mpv (commit 41f6a64, build de 2025-12-21 distribuído como asset da release v0.41.0; `x86_64-w64-mingw32`, SHA-256 fixado em `scripts/binaries.json`); uosc 5.13.0. Os textos de licença (mpv GPL e uosc) vão dentro do instalador.
 - Se o repositório continua privado (exige `gh auth login` no notebook) ou vira público (download direto, sem login).
 - Termos atuais da API do TMDB para uso pessoal não comercial.

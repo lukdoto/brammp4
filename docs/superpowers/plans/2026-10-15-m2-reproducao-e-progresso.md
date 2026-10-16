@@ -35,6 +35,7 @@
 2. **Regra dos 2 minutos.** "Faltando menos de 2 min" só vale depois da metade do vídeo; sem isso um clipe de 100 s seria "assistido" ao abrir.
 3. **Faixas externas.** O `--sid` de uma legenda externa depende da ordem em que o mpv a registra; por isso a legenda externa escolhida é selecionada depois do `file-loaded`, procurando o arquivo na `track-list` do mpv.
 4. **mpv.** A spec deixava a origem do binário em aberto (seção 16): usar o build de CI oficial do projeto mpv (`mpv-player/mpv` v0.41.0, `x86_64-w64-mingw32`), não builds de terceiros.
+5. **Arquivo não encontrado ao dar play.** A spec (seção 12) previa revarrer a biblioteca automaticamente. No M2 o app só mostra o aviso e orienta revarrer a biblioteca; a revarredura automática fica para o M5. A seção 12 da spec foi corrigida para dizer isso.
 
 ## Review Focus
 
