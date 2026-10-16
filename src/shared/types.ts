@@ -1,5 +1,5 @@
 export type ParsedVideo =
-  | { kind: 'episode'; seriesName: string; year?: number; season: number; episodes: number[] }
+  | { kind: 'episode'; seriesName: string; year?: number; season: number; episodes: number[]; episodeTitle?: string }
   | { kind: 'movie'; title: string; year?: number }
 
 export interface ProbeTrack {
@@ -68,7 +68,7 @@ export interface FileView {
   subCount: number
 }
 
-export interface ItemView { key: string; season: number | null; episode: number | null; files: FileView[] }
+export interface ItemView { key: string; season: number | null; episode: number | null; name?: string; files: FileView[] }
 
 export interface TitleDetail {
   id: number

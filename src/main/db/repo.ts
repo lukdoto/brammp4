@@ -34,16 +34,19 @@ export function setLastScan(db: Db, id: string): void {
 }
 
 export function upsertTitle(db: Db, t: { kind: 'series' | 'movie'; localKey: string; name: string; year?: number }): number {
-  db.prepare('INSERT INTO titles (kind, local_key, name, year) VALUES (?, ?, ?, ?) ON CONFLICT(local_key) DO NOTHING').run(
-    t.kind, t.localKey, t.name, t.year ?? null
-  )
+  db.prepare(
+    `INSERT INTO titles (kind, local_key, name, year) VALUES (?, ?, ?, ?)
+     ON CONFLICT(local_key) DO UPDATE SET name = excluded.name, year = COALESCE(excluded.year, titles.year)
+     WHERE titles.tmdb_id IS NULL`
+  ).run(t.kind, t.localKey, t.name, t.year ?? null)
   return (db.prepare('SELECT id FROM titles WHERE local_key = ?').get(t.localKey) as { id: number }).id
 }
 
-export function upsertItem(db: Db, i: { key: string; titleId: number; season: number | null; episode: number | null }): void {
-  db.prepare('INSERT INTO items (key, title_id, season, episode) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO NOTHING').run(
-    i.key, i.titleId, i.season, i.episode
-  )
+export function upsertItem(db: Db, i: { key: string; titleId: number; season: number | null; episode: number | null; name?: string }): void {
+  db.prepare(
+    `INSERT INTO items (key, title_id, season, episode, name) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET name = COALESCE(excluded.name, items.name)`
+  ).run(i.key, i.titleId, i.season, i.episode, i.name ?? null)
 }
 
 export interface FileRow { id: number; itemKey: string; relPath: string; size: number; mtimeMs: number; probedAt: string | null }
@@ -152,8 +155,8 @@ export function getTitleDetail(db: Db, id: number): TitleDetail | null {
     | { id: number; kind: 'series' | 'movie'; name: string; year: number | null }
     | undefined
   if (!t) return null
-  const items = db.prepare('SELECT key, season, episode FROM items WHERE title_id = ? ORDER BY season, episode').all(id) as {
-    key: string; season: number | null; episode: number | null
+  const items = db.prepare('SELECT key, season, episode, name FROM items WHERE title_id = ? ORDER BY season, episode').all(id) as {
+    key: string; season: number | null; episode: number | null; name: string | null
   }[]
   const files = db.prepare(
     `SELECT f.id, f.item_key, f.rel_path, f.height, f.video_codec, f.missing, l.label, l.status,
@@ -176,6 +179,6 @@ export function getTitleDetail(db: Db, id: number): TitleDetail | null {
   }
   const itemViews: ItemView[] = items
     .filter((i) => byItem.has(i.key))
-    .map((i) => ({ key: i.key, season: i.season, episode: i.episode, files: byItem.get(i.key)! }))
+    .map((i) => ({ key: i.key, season: i.season, episode: i.episode, ...(i.name ? { name: i.name } : {}), files: byItem.get(i.key)! }))
   return { id: t.id, kind: t.kind, name: t.name, year: opt(t.year), items: itemViews }
 }

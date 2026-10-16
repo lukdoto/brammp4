@@ -22,10 +22,12 @@ export function titleOf(p: ParsedVideo): { kind: 'series' | 'movie'; localKey: s
   return { kind: 'movie', localKey: `movie:${p.year ? `${slug}-${p.year}` : slug}`, name: p.title, year: p.year }
 }
 
-export function itemsOf(p: ParsedVideo): { key: string; season: number | null; episode: number | null }[] {
+export function itemsOf(p: ParsedVideo): { key: string; season: number | null; episode: number | null; name?: string }[] {
   if (p.kind === 'episode') {
     const slug = slugify(p.seriesName)
-    return p.episodes.map((e) => ({ key: `local:${slug}:${episodeCode(p.season, e)}`, season: p.season, episode: e }))
+    // o título do episódio só vale quando o arquivo tem um único episódio
+    const name = p.episodes.length === 1 && p.episodeTitle ? { name: p.episodeTitle } : {}
+    return p.episodes.map((e) => ({ key: `local:${slug}:${episodeCode(p.season, e)}`, season: p.season, episode: e, ...name }))
   }
   const slug = slugify(p.title)
   return [{ key: `local:${p.year ? `${slug}-${p.year}` : slug}`, season: null, episode: null }]
