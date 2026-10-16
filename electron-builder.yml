@@ -9,6 +9,10 @@ files:
 extraResources:
   - from: vendor/bin
     to: bin
+  - from: vendor/mpv
+    to: mpv
+  - from: vendor/mpv-config
+    to: mpv-config
 asar: true
 win:
   target:
