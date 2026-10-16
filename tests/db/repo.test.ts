@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { openDatabase, type Db } from '../../src/main/db/database'
 import * as repo from '../../src/main/db/repo'
+import { saveProgress } from '../../src/main/db/progress'
+import { seedMovie, seedSeries } from '../helpers/seed'
 
 let db: Db
 beforeEach(() => {
@@ -132,6 +134,36 @@ describe('repo', () => {
     const f1 = addEpisode('S01E01', 'Dark/S1/e1.mkv')
     repo.replaceExternalSubs(db, f1, [{ relPath: 'Dark/S1/e1.srt', forced: false, sdh: false, codec: 'srt' }])
     repo.replaceUnmatched(db, 'lib1', [{ relPath: 'x.mkv', reason: 'nome não reconhecido' }])
-    expect(repo.librarySummary(db, 'lib1')).toEqual({ series: 1, movies: 0, episodes: 1, subtitles: 1, unmatched: 1 })
+    expect(repo.librarySummary(db, 'lib1')).toEqual({ series: 1, movies: 0, seasons: 1, episodes: 1, subtitles: 1, unmatched: 1 })
+  })
+})
+
+describe('adicionados recentemente e temporadas', () => {
+  it('catalog.recent traz os títulos mais novos primeiro (no máximo 12)', () => {
+    const { db } = seedSeries()
+    const m = seedMovie(db)
+    db.prepare('UPDATE titles SET added_at = ? WHERE id = ?').run('2026-01-01T00:00:00.000Z', m.titleId)
+    const cat = repo.getCatalog(db)
+    expect(cat.recent.map((c) => c.name)).toEqual(['Dark', 'Dune'])
+    for (let i = 0; i < 20; i++) seedMovie(db, `Filme ${i}`, 2000 + i)
+    expect(repo.getCatalog(db).recent).toHaveLength(12)
+  })
+
+  it('o resumo da biblioteca conta as temporadas', () => {
+    const { db, titleId } = seedSeries()
+    repo.upsertItem(db, { key: 'local:dark:S02E01', titleId, season: 2, episode: 1 })
+    repo.upsertFile(db, { itemKey: 'local:dark:S02E01', libraryId: 'lib1', relPath: 'Dark/Season 2/e1.mkv', size: 1, mtimeMs: 1 })
+    expect(repo.librarySummary(db, 'lib1')).toMatchObject({ series: 1, seasons: 2, episodes: 4 })
+  })
+})
+
+describe('detalhe do título com progresso', () => {
+  it('traz o progresso do episódio e a duração do arquivo', () => {
+    const { db, titleId, keys } = seedSeries()
+    saveProgress(db, { itemKey: keys[1]!, positionS: 400, durationS: 1380, watched: false })
+    const detail = repo.getTitleDetail(db, titleId)!
+    expect(detail.items[0]!.progress).toBeUndefined()
+    expect(detail.items[1]!.progress).toMatchObject({ positionS: 400, durationS: 1380, watched: false })
+    expect(detail.items[0]!.files[0]!.durationS).toBe(1380)
   })
 })

@@ -27,7 +27,8 @@ export function migrate(db: Db): void {
 
 export function openDatabase(file: string): Db {
   const db = new DatabaseSync(file)
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+  // synchronous = FULL: em WAL, NORMAL pode perder as últimas gravações num corte de energia (a spec promete no máximo 5 s)
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL;PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
   migrate(db)
   return db
 }

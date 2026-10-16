@@ -45,5 +45,9 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_files_library ON files(library_id);
   CREATE INDEX idx_items_title ON items(title_id);
   CREATE INDEX idx_tracks_file ON tracks(file_id);
+  `,
+  `
+  ALTER TABLE titles ADD COLUMN added_at TEXT;
+  UPDATE titles SET added_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE added_at IS NULL;
   `
 ]

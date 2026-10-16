@@ -1,15 +1,19 @@
 import { BrowserWindow, dialog, ipcMain, type MessageBoxOptions } from 'electron'
 import { basename } from 'node:path'
-import type { ScanSummary } from '../shared/types'
+import type { PlayerState, PlayRequest, PlayResult, ScanSummary } from '../shared/types'
 import type { Db } from './db/database'
+import { listContinueWatching } from './db/progress'
 import * as repo from './db/repo'
 import { readMarker, writeMarker } from './libraries/marker'
 import { findOfflineTwin } from './libraries/twin'
+import { getPlayOptions } from './player/options'
+import { parsePlayRequest } from './player/request'
 
 export interface IpcContext {
   db: Db
   window: () => BrowserWindow | null
   scan: (libraryId: string) => Promise<ScanSummary>
+  player: { play(req: PlayRequest): Promise<PlayResult>; state(): PlayerState }
 }
 
 export function registerIpc(ctx: IpcContext): void {
@@ -58,4 +62,12 @@ export function registerIpc(ctx: IpcContext): void {
   })
   ipcMain.handle('catalog:get', () => repo.getCatalog(ctx.db))
   ipcMain.handle('title:get', (_e, id: unknown) => (Number.isInteger(id) ? repo.getTitleDetail(ctx.db, id as number) : null))
+
+  ipcMain.handle('continue:list', () => listContinueWatching(ctx.db))
+  ipcMain.handle('play:options', (_e, key: unknown) => (typeof key === 'string' && key.length <= 500 ? getPlayOptions(ctx.db, key) : null))
+  ipcMain.handle('play:start', (_e, raw: unknown): Promise<PlayResult> | PlayResult => {
+    const req = parsePlayRequest(raw)
+    return req ? ctx.player.play(req) : { ok: false, error: 'invalid' }
+  })
+  ipcMain.handle('play:state', () => ctx.player.state())
 }

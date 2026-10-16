@@ -7,5 +7,31 @@
       "LICENSE"
     ],
     "license": "GPL-3.0 (build gyan.dev, https://www.gyan.dev/ffmpeg/builds/)"
+  },
+  "mpv": {
+    "url": "https://github.com/mpv-player/mpv/releases/download/v0.41.0/mpv-v0.41.0-x86_64-w64-mingw32.zip",
+    "sha256": "a49811c0752c108b8260636f9c6f6fcb97406641c98b30f1e7b500dfb20177de",
+    "extractAll": true,
+    "dest": "mpv",
+    "probe": "mpv.exe",
+    "license": "GPL-2.0-or-later (asset oficial da release v0.41.0 do mpv-player/mpv; o zip interno é um build git de 2025-12-21, mpv-git-2025-12-21-41f6a64-x86_64.zip)"
+  },
+  "mpv-license": {
+    "url": "https://raw.githubusercontent.com/mpv-player/mpv/v0.41.0/LICENSE.GPL",
+    "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6",
+    "raw": "mpv/LICENSE.GPL"
+  },
+  "uosc": {
+    "url": "https://github.com/tomasklaen/uosc/releases/download/5.13.0/uosc.zip",
+    "sha256": "4be9da3289285300fa374496c3f1bfd7bb20ac08e890d25bd5a06b28eebe4882",
+    "extractAll": true,
+    "dest": "mpv-config",
+    "probe": "scripts/uosc/main.lua",
+    "license": "LGPL (ver LICENSE-uosc.txt, de tomasklaen/uosc LICENSE.LGPL)"
+  },
+  "uosc-license": {
+    "url": "https://raw.githubusercontent.com/tomasklaen/uosc/5.13.0/LICENSE.LGPL",
+    "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+    "raw": "mpv-config/LICENSE-uosc.txt"
   }
 }

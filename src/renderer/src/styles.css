@@ -12,6 +12,8 @@ header.top { display: flex; align-items: center; gap: 16px; padding: 16px 48px; 
 header.top .logo { color: var(--accent); font-weight: 800; font-size: 26px; letter-spacing: 1px; cursor: pointer; }
 header.top .spacer { flex: 1; }
 main { padding: 0 48px 48px; }
+/* avisos fora do <main>: mesmo recuo lateral para não encostar nas bordas da janela */
+.banners { padding: 0 48px; }
 .banner { background: #2a2a2a; border-left: 4px solid #e5a00d; padding: 10px 14px; margin: 0 0 16px; }
 .row h2 { font-size: 20px; margin: 24px 0 10px; }
 .cards { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }
@@ -39,3 +41,19 @@ main { padding: 0 48px 48px; }
 .summary { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .add { display: flex; gap: 8px; margin: 20px 0; }
 .error { color: #ff6b6b; }
+
+.pbar { height: 4px; background: #555; border-radius: 2px; overflow: hidden; margin-top: 8px; max-width: 320px; }
+.pbar .fill { height: 100%; background: var(--accent); }
+.pbar .fill.done { background: var(--ok); }
+.badge.done { color: var(--ok); border-color: var(--ok); }
+.episode button { flex: none; }
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 10; padding: 16px; }
+.modal { background: var(--panel); border-radius: 8px; padding: 24px; width: min(520px, 100%); max-height: 90vh; overflow: auto; }
+.modal h2 { margin: 0 0 4px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin: 14px 0; font-size: 13px; color: var(--muted); }
+.field select { font: inherit; padding: 8px 10px; border-radius: 4px; border: 1px solid #444; background: #000; color: var(--text); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+.banner.now-playing { border-left-color: var(--ok); }
+.banner.warn { cursor: pointer; }
+.card.wide { flex-basis: 240px; }
+.card .pbar { max-width: none; }

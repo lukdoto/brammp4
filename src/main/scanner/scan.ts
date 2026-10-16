@@ -25,7 +25,7 @@ async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>): Prom
 }
 
 const aborted = (libraryId: string): ScanSummary => ({
-  libraryId, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, subtitles: 0, unmatched: 0
+  libraryId, aborted: true, videos: 0, probed: 0, series: 0, movies: 0, episodes: 0, seasons: 0, subtitles: 0, unmatched: 0
 })
 
 /**

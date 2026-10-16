@@ -1,4 +1,4 @@
-import type { Catalog, FileView, ItemView, LibraryStatus, LibraryView, ProbeResult, ProbeTrack, TitleCard, TitleDetail } from '../../shared/types'
+import type { Catalog, FileView, ItemView, LibraryStatus, LibraryView, ProbeResult, ProbeTrack, ProgressView, TitleCard, TitleDetail } from '../../shared/types'
 import type { Db } from './database'
 
 const now = () => new Date().toISOString()
@@ -35,10 +35,10 @@ export function setLastScan(db: Db, id: string): void {
 
 export function upsertTitle(db: Db, t: { kind: 'series' | 'movie'; localKey: string; name: string; year?: number }): number {
   db.prepare(
-    `INSERT INTO titles (kind, local_key, name, year) VALUES (?, ?, ?, ?)
+    `INSERT INTO titles (kind, local_key, name, year, added_at) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(local_key) DO UPDATE SET name = excluded.name, year = COALESCE(excluded.year, titles.year)
      WHERE titles.tmdb_id IS NULL`
-  ).run(t.kind, t.localKey, t.name, t.year ?? null)
+  ).run(t.kind, t.localKey, t.name, t.year ?? null, now())
   return (db.prepare('SELECT id FROM titles WHERE local_key = ?').get(t.localKey) as { id: number }).id
 }
 
@@ -117,6 +117,7 @@ export function librarySummary(db: Db, libraryId: string) {
   const base = `FROM titles t JOIN items i ON i.title_id = t.id JOIN files f ON f.item_key = i.key WHERE f.library_id = ? AND f.missing = 0`
   return {
     series: count(`SELECT COUNT(DISTINCT t.id) AS n ${base} AND t.kind = 'series'`),
+    seasons: count(`SELECT COUNT(DISTINCT t.id || ':' || i.season) AS n ${base} AND t.kind = 'series' AND i.season IS NOT NULL`),
     movies: count(`SELECT COUNT(DISTINCT t.id) AS n ${base} AND t.kind = 'movie'`),
     episodes: count(`SELECT COUNT(DISTINCT i.key) AS n ${base} AND t.kind = 'series'`),
     subtitles: count(
@@ -127,27 +128,28 @@ export function librarySummary(db: Db, libraryId: string) {
   }
 }
 
-interface CatalogRow { id: number; kind: 'series' | 'movie'; name: string; year: number | null; label: string; status: LibraryStatus; missing: number }
+interface CatalogRow { id: number; kind: 'series' | 'movie'; name: string; year: number | null; label: string; status: LibraryStatus; missing: number; added_at: string | null }
 
 export function getCatalog(db: Db): Catalog {
   const rows = db.prepare(
-    `SELECT t.id, t.kind, t.name, t.year, l.label, l.status, f.missing
+    `SELECT t.id, t.kind, t.name, t.year, t.added_at, l.label, l.status, f.missing
      FROM titles t JOIN items i ON i.title_id = t.id JOIN files f ON f.item_key = i.key JOIN libraries l ON l.id = f.library_id
      WHERE f.missing = 0`
   ).all() as unknown as CatalogRow[]
-  const cards = new Map<number, TitleCard & { visible: boolean }>()
+  type Card = TitleCard & { visible: boolean; addedAt: string }
+  const cards = new Map<number, Card>()
   for (const r of rows) {
-    const c = cards.get(r.id) ?? { id: r.id, kind: r.kind, name: r.name, year: opt(r.year), available: false, offlineLabels: [], visible: false }
+    const c = cards.get(r.id) ?? { id: r.id, kind: r.kind, name: r.name, year: opt(r.year), available: false, offlineLabels: [], visible: false, addedAt: r.added_at ?? '' }
     if (r.status === 'online') c.available = true
     else if (!c.offlineLabels.includes(r.label)) c.offlineLabels.push(r.label)
     c.visible = true
     cards.set(r.id, c)
   }
-  const list = [...cards.values()]
-    .filter((c) => c.visible)
-    .map(({ visible: _v, ...c }) => c)
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-  return { series: list.filter((c) => c.kind === 'series'), movies: list.filter((c) => c.kind === 'movie') }
+  const all = [...cards.values()].filter((c) => c.visible)
+  const strip = ({ visible: _v, addedAt: _a, ...c }: Card): TitleCard => c
+  const list = all.map(strip).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  const recent = [...all].sort((a, b) => b.addedAt.localeCompare(a.addedAt) || a.name.localeCompare(b.name, 'pt-BR')).slice(0, 12).map(strip)
+  return { series: list.filter((c) => c.kind === 'series'), movies: list.filter((c) => c.kind === 'movie'), recent }
 }
 
 export function getTitleDetail(db: Db, id: number): TitleDetail | null {
@@ -159,26 +161,45 @@ export function getTitleDetail(db: Db, id: number): TitleDetail | null {
     key: string; season: number | null; episode: number | null; name: string | null
   }[]
   const files = db.prepare(
-    `SELECT f.id, f.item_key, f.rel_path, f.height, f.video_codec, f.missing, l.label, l.status,
+    `SELECT f.id, f.item_key, f.rel_path, f.height, f.video_codec, f.duration_s, f.missing, l.label, l.status,
        (SELECT COUNT(*) FROM tracks tr WHERE tr.file_id = f.id AND tr.type = 'audio') AS audio_count,
        (SELECT COUNT(*) FROM tracks tr WHERE tr.file_id = f.id AND tr.type = 'sub') AS sub_count
      FROM files f JOIN libraries l ON l.id = f.library_id JOIN items i ON i.key = f.item_key
      WHERE i.title_id = ? AND f.missing = 0
      ORDER BY f.height DESC`
   ).all(id) as {
-    id: number; item_key: string; rel_path: string; height: number | null; video_codec: string | null; missing: number
+    id: number; item_key: string; rel_path: string; height: number | null; video_codec: string | null; duration_s: number | null; missing: number
     label: string; status: LibraryStatus; audio_count: number; sub_count: number
   }[]
   const byItem = new Map<string, FileView[]>()
   for (const f of files) {
     const view: FileView = {
       id: f.id, relPath: f.rel_path, libraryLabel: f.label, available: f.status === 'online' && f.missing === 0,
-      height: opt(f.height), videoCodec: opt(f.video_codec), audioCount: f.audio_count, subCount: f.sub_count
+      height: opt(f.height), videoCodec: opt(f.video_codec), durationS: opt(f.duration_s), audioCount: f.audio_count, subCount: f.sub_count
     }
     byItem.set(f.item_key, [...(byItem.get(f.item_key) ?? []), view])
   }
+  const progressRows = db.prepare(
+    `SELECT p.item_key, p.position_s, p.duration_s, p.watched, p.updated_at
+     FROM progress p JOIN items i ON i.key = p.item_key WHERE i.title_id = ?`
+  ).all(id) as unknown as { item_key: string; position_s: number; duration_s: number | null; watched: number; updated_at: string }[]
+  const progressByItem = new Map(
+    progressRows.map((r) => [
+      r.item_key,
+      {
+        positionS: r.position_s,
+        ...(r.duration_s !== null ? { durationS: r.duration_s } : {}),
+        watched: r.watched === 1,
+        updatedAt: r.updated_at
+      } satisfies ProgressView
+    ])
+  )
   const itemViews: ItemView[] = items
     .filter((i) => byItem.has(i.key))
-    .map((i) => ({ key: i.key, season: i.season, episode: i.episode, ...(i.name ? { name: i.name } : {}), files: byItem.get(i.key)! }))
+    .map((i) => ({
+      key: i.key, season: i.season, episode: i.episode, ...(i.name ? { name: i.name } : {}),
+      ...(progressByItem.has(i.key) ? { progress: progressByItem.get(i.key)! } : {}),
+      files: byItem.get(i.key)!
+    }))
   return { id: t.id, kind: t.kind, name: t.name, year: opt(t.year), items: itemViews }
 }

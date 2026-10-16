@@ -1,0 +1,104 @@
+import { isWatched } from '../../shared/rules'
+
+export interface SavedProgress {
+  positionS: number
+  durationS?: number
+  watched: boolean
+}
+
+export interface TrackerOptions {
+  save: (p: SavedProgress) => void
+  now: () => number
+  /** intervalo mínimo entre gravações periódicas (padrão 5000 ms) */
+  intervalMs?: number
+}
+
+/** No `eof`, só pula para a duração se a última posição conhecida estiver a até 30 s do fim (ou já assistida). */
+export const EOF_SNAP_WINDOW_S = 30
+
+const same =(a: SavedProgress, b: SavedProgress) => a.positionS === b.positionS && a.durationS === b.durationS && a.watched === b.watched
+
+/**
+ * Decide quando gravar o progresso. Nada é gravado antes de arm() (o `playback-restart` do mpv):
+ * enquanto o mpv carrega, `time-pos` pode valer ~0 e apagar o ponto que o usuário tinha salvo.
+ */
+export class ProgressTracker {
+  private armed = false
+  private stopped = false
+  private position: number | undefined
+  private duration: number | undefined
+  private lastSaveAt = Number.NEGATIVE_INFINITY
+  private lastSaved: SavedProgress | undefined
+  private readonly intervalMs: number
+
+  constructor(private readonly opts: TrackerOptions) {
+    this.intervalMs = opts.intervalMs ?? 5000
+  }
+
+  arm(): void {
+    this.armed = true
+    // descarta a posição lida durante o carregamento (~0); só vale uma posição lida depois de armar
+    this.position = undefined
+  }
+
+  get isArmed(): boolean {
+    return this.armed
+  }
+
+  get positionS(): number | undefined {
+    return this.position
+  }
+
+  onTimePos(v: unknown): void {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return
+    this.position = v
+    if (this.armed && this.opts.now() - this.lastSaveAt >= this.intervalMs) this.saveNow()
+  }
+
+  onDuration(v: unknown): void {
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) this.duration = v
+  }
+
+  onPause(v: unknown): void {
+    if (v === true) this.saveNow()
+  }
+
+  /**
+   * `eof` leva a posição até o fim (assistido) só se ela já estava perto do fim ou já contava como assistida:
+   * um disco arrancado costuma aparecer como `eof` no meio do vídeo e não pode virar "assistido".
+   * Qualquer outro motivo só grava onde estava.
+   */
+  onEnd(reason: unknown): void {
+    if (reason === 'eof' && this.armed && this.duration !== undefined && this.position !== undefined) {
+      const nearEnd = this.duration - this.position <= EOF_SNAP_WINDOW_S
+      if (nearEnd || isWatched(this.position, this.duration)) this.position = this.duration
+    }
+    this.saveNow()
+  }
+
+  flush(): void {
+    this.saveNow()
+  }
+
+  /** Encerra o rastreador para sempre: depois disto nada mais é gravado (outro arquivo entrou no mesmo mpv). */
+  stop(): void {
+    this.stopped = true
+  }
+
+  get isStopped(): boolean {
+    return this.stopped
+  }
+
+  private saveNow(): void {
+    if (this.stopped || !this.armed || this.position === undefined) return
+    const next: SavedProgress = {
+      positionS: this.position,
+      ...(this.duration !== undefined ? { durationS: this.duration } : {}),
+      watched: isWatched(this.position, this.duration)
+    }
+    this.lastSaveAt = this.opts.now() // última tentativa, não última gravação
+    if (this.lastSaved && same(this.lastSaved, next)) return
+    this.opts.save(next)
+    this.lastSaved = next // só depois de save retornar: se lançar, a próxima tentativa não é suprimida
+  }
+}

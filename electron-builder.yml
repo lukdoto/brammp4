@@ -9,6 +9,12 @@ files:
 extraResources:
   - from: vendor/bin
     to: bin
+  - from: vendor/mpv
+    to: mpv
+    # o app chama mpv.exe direto; os .bat de associação de arquivos e o mpv.com de console não vão no instalador
+    filter: ['**/*', '!mpv-register.bat', '!mpv-unregister.bat', '!mpv.com']
+  - from: vendor/mpv-config
+    to: mpv-config
 asar: true
 win:
   target:
