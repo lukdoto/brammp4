@@ -66,8 +66,8 @@ describe('pasta do título', () => {
     expect(parseVideoPath('Séries/Dark.S01E03.mkv')).toEqual(ep('Dark', 1, [3]))
   })
 
-  it('contêiner sem nome no arquivo não vira série', () => {
-    expect(parseVideoPath('Series/S01E03.mkv')).toBeNull()
+  it('contêiner sem nome no arquivo não vira série (cai no caminho de filme)', () => {
+    expect(parseVideoPath('Series/S01E03.mkv')).toMatchObject({ kind: 'movie' })
   })
 
   it('ano da pasta ou do prefixo é preservado', () => {
@@ -126,9 +126,9 @@ describe('marcadores de episódio', () => {
     ['Show/Show 1x1.mkv', 1, 1],
     ['Show/Show 1x01.mkv', 1, 1],
     ['Show/Show 12x123.mkv', 12, 123],
-    ['Show/Show.Episode.05.mkv', 1, 5],
-    ['Show/Show episodio 7.mkv', 1, 7],
-    ['Show/Show Capítulo 9.mkv', 1, 9],
+    ['Show/Episode.05.mkv', 1, 5],
+    ['Show/episodio 7.mkv', 1, 7],
+    ['Show/Capítulo 9.mkv', 1, 9],
     ['Show/capitulo 11.mkv', 1, 11],
     ['Show/Cap 12.mkv', 1, 12]
   ])('%s', (path, season, episode) => {
@@ -162,7 +162,7 @@ describe('marcadores de episódio', () => {
 
   it('anime: dígito 2-9 depois do nome é a temporada e não entra no nome', () => {
     expect(parseVideoPath('[Grupo] Meu Anime 3 - 04 [720p].mkv')).toEqual(ep('Meu Anime', 3, [4]))
-    expect(parseVideoPath('Season 2/[Grupo] Meu Anime 3 - 04 [720p].mkv')).toEqual(ep('Meu Anime', 3, [4]))
+    expect(parseVideoPath('Season 2/[Grupo] Meu Anime 3 - 04 [720p].mkv')).toEqual(ep('Meu Anime 3', 2, [4]))
     expect(parseVideoPath('Anime/[Grupo] Meu Anime 3 - 04 [720p].mkv')).toEqual(ep('Meu Anime', 3, [4]))
     expect(parseVideoPath('Pasta/[Grupo] Meu Anime 3 - 04 [720p].mkv')).toEqual(ep('Pasta', 3, [4]))
     expect(parseVideoPath('Pasta/[Grupo] Meu Anime 12 - 04 [720p].mkv')).toEqual(ep('Pasta', 1, [4]))
@@ -176,7 +176,7 @@ describe('marcadores de episódio', () => {
     expect(parseVideoPath('Show/ep 3 - Piloto.mkv')).toMatchObject({ episodeTitle: 'Piloto' })
     expect(parseVideoPath('Show/ep 3.mkv')).not.toHaveProperty('episodeTitle')
     expect(parseVideoPath('Show/Show 1x03 - Piloto.mkv')).not.toHaveProperty('episodeTitle')
-    expect(parseVideoPath('Show/Show - 03.mkv')).not.toHaveProperty('episodeTitle')
+    expect(parseVideoPath('Show/[G] Show - 03.mkv')).not.toHaveProperty('episodeTitle')
   })
 
   it('número solto em pasta de temporada continua funcionando', () => {
@@ -197,5 +197,83 @@ describe('chaves e título do episódio', () => {
       { key: 'local:dark:S01E01', season: 1, episode: 1 },
       { key: 'local:dark:S01E02', season: 1, episode: 2 }
     ])
+  })
+})
+
+describe('rodada 1: pasta do título pelo prefixo', () => {
+  it.each([
+    ['TV Shows/Dark/Season 1/Dark.S01E01.mkv', 'Dark'],
+    ['Series/Netflix/Dark/Season 1/Dark.S01E01.mkv', 'Dark'],
+    ['Animes/Ação/Naruto/Naruto.S01E01.mkv', 'Naruto'],
+    ['Animes/Ação/Bleach/Bleach.S01E01.mkv', 'Bleach'],
+    ['1080p/Show.S01E01.mkv', 'Show'],
+    ['[Grupo]/Show.S01E01.mkv', 'Show'],
+    ['Downloads/Dark.S01E01.mkv', 'Dark'],
+    ['Series Completas/Dark/Dark.S01E01.mkv', 'Dark'],
+    ['cowboy bebop/Cowboy.Bebop.S01E01.1080p.BluRay.mkv', 'cowboy bebop'],
+    ['Frieren/[WF] Sousou no Frieren [BD 1080p]/[WF] Sousou no Frieren - 01 [BD 1080p].mkv', 'Frieren']
+  ])('%s -> %s', (path, name) => {
+    expect(parseVideoPath(path)).toMatchObject({ kind: 'episode', seriesName: name })
+  })
+})
+
+describe('rodada 1: forma anime', () => {
+  it.each([
+    'Filmes/Matrix/Matrix - 01.mkv',
+    'Kung Fu Panda/Kung Fu Panda - 03.mkv',
+    'Apollo 13/Apollo 13 - 01.mkv',
+    'Terror/Alien - 03.mkv'
+  ])('%s é filme', (path) => expect(parseVideoPath(path)).toMatchObject({ kind: 'movie' }))
+
+  it('três dígitos, tag ou pasta de temporada qualificam', () => {
+    expect(parseVideoPath('Naruto/Naruto - 001.mkv')).toEqual(ep('Naruto', 1, [1]))
+    expect(parseVideoPath('Naruto/[G] Naruto - 05.mkv')).toEqual(ep('Naruto', 1, [5]))
+    expect(parseVideoPath('Show/Season 1/Show - 05 (1080p).mkv')).toEqual(ep('Show', 1, [5]))
+  })
+
+  it('dígito final: não vira temporada se a pasta do título termina nele ou se a pasta já deu temporada', () => {
+    expect(parseVideoPath('Persona 4/[G] Persona 4 - 01.mkv')).toEqual(ep('Persona 4', 1, [1]))
+    expect(parseVideoPath('Show/Season 1/Show 2 - 01.mkv')).toEqual(ep('Show', 1, [1]))
+    expect(parseVideoPath('Frieren/[S.A]_[Wf]_-_Sousou No Frieren 2_-_01 [SD].mp4')).toEqual(ep('Frieren', 2, [1]))
+  })
+})
+
+describe('rodada 1: palavra de episódio', () => {
+  it.each([
+    'Pacific Rim Ep 1.mkv',
+    'Filmes/Pacific Rim Ep 1.mkv',
+    'Star Wars Episode 4 - A New Hope (1977).mkv',
+    'Star Wars/Episode 1 - The Phantom Menace (1999).mkv',
+    'Star Wars/Star Wars Episode 4.mkv'
+  ])('%s é filme', (path) => expect(parseVideoPath(path)).toMatchObject({ kind: 'movie' }))
+
+  it('começo do nome continua valendo', () => {
+    expect(parseVideoPath('Avatar/2 Livro Dois_ Terra/episódio 10 - A Biblioteca.avi')).toEqual(
+      ep('Avatar', 2, [10], { episodeTitle: 'A Biblioteca' })
+    )
+  })
+})
+
+describe('rodada 1: NxM e nome vazio', () => {
+  it('um dígito só com pasta de título', () => {
+    expect(parseVideoPath('Filmes/Cars 2x3.mkv')).toMatchObject({ kind: 'movie' })
+    expect(parseVideoPath('Filmes/2x2 Movie.mkv')).toMatchObject({ kind: 'movie' })
+    expect(parseVideoPath('X-Men 97/S1/1x1.mp4')).toEqual(ep('X-Men 97', 1, [1]))
+    expect(parseVideoPath('Show.1920x1080.S01E01.mkv')).toEqual(ep('Show', 1, [1]))
+    expect(parseVideoPath('Cars 2x13.mkv')).toEqual(ep('Cars', 2, [13]))
+  })
+})
+
+describe('rodada 1: título do episódio limpo', () => {
+  it('tira [..] e qualidade, mantém parênteses', () => {
+    expect(parseVideoPath('Show/episódio 3 - Título [1080p].mkv')).toMatchObject({ episodeTitle: 'Título' })
+    expect(parseVideoPath('Show/Season 1/Episode 05 - Title 1080p WEB-DL.mkv')).toMatchObject({ season: 1, episodes: [5], episodeTitle: 'Title' })
+    expect(parseVideoPath('Show/ep 2 - O Dia (1ª Parte - A Invasão).mkv')).toMatchObject({ episodeTitle: 'O Dia (1ª Parte - A Invasão)' })
+  })
+})
+
+describe('rodada 1: número solto em pasta de temporada solta', () => {
+  it('Livro Dois / 05 - Nome', () => {
+    expect(parseVideoPath('Avatar/2 Livro Dois_ Terra/05 - Nome.mkv')).toEqual(ep('Avatar', 2, [5]))
   })
 })
