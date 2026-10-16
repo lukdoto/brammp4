@@ -4,6 +4,7 @@
 //   files:      extrai o pacote e copia só os arquivos listados para vendor/<dest ou "bin">/
 //   extractAll: extrai o pacote inteiro (achatando uma única pasta raiz) para vendor/<dest>/; "probe" é um arquivo que deve existir depois
 //   raw:        salva o arquivo baixado como está em vendor/<raw>
+// No fim, app-config/mpv/ (mpv.conf, input.conf, script-opts/uosc.conf do app) é copiado por cima de vendor/mpv-config/.
 // Uso: node scripts/fetch-binaries.mjs          (falha se o hash não conferir)
 //      node scripts/fetch-binaries.mjs --lock   (grava o hash de entradas com sha256 vazio)
 import { createHash } from 'node:crypto'
@@ -107,3 +108,11 @@ for (const [name, entry] of Object.entries(manifest)) {
   await writeFile(stamp, entry.sha256)
 }
 if (changed) await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+
+// Configuração do mpv/uosc do app (versionada em app-config/mpv): sempre por cima do que veio baixado.
+// Roda em toda execução (é barato e idempotente), então dev, testes e instalador usam a mesma pasta mesclada.
+const appConfig = join(root, 'app-config', 'mpv')
+await cp(appConfig, join(vendor, 'mpv-config'), { recursive: true, force: true })
+// carimbo da antiga entrada uosc-conf (o uosc.conf agora é do app)
+await rm(join(vendor, 'uosc-conf.sha256'), { force: true })
+console.log('app-config/mpv: copiado para vendor/mpv-config/')

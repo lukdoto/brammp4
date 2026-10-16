@@ -171,6 +171,58 @@ describe.skipIf(!existsSync(exe))('mpv real', () => {
     expect(exited).toBe(true)
   }, 30000)
 
+  it('a configuração do app: sem retomar do mpv, sem arrastar, só teclas seguras', async () => {
+    const { video } = prepare()
+    const log = join(dir!, 'mpv-conf.log')
+    const pipe = uniquePipePath()
+    launch([
+      `--input-ipc-server=${pipe}`,
+      `--config-dir=${config}`,
+      `--log-file=${log}`,
+      '--vo=null',
+      '--ao=null',
+      '--pause',
+      '--no-terminal',
+      '--osc=no',
+      '--',
+      video
+    ])
+    const c = await connect(pipe)
+    c.start()
+    expect(await waitDuration(c)).toBeGreaterThan(0.5)
+    const off = (v: unknown) => v === false || v === 'no'
+    expect(off(await c.getProperty('options/resume-playback'))).toBe(true)
+    expect(off(await c.getProperty('options/save-position-on-quit'))).toBe(true)
+    // drag-and-drop é uma escolha (no/auto/replace/...); pelo IPC o "no" chega como false
+    expect(off(await c.getProperty('options/drag-and-drop'))).toBe(true)
+    expect(off(await c.getProperty('options/input-default-bindings'))).toBe(true)
+
+    // input-bindings lista também as teclas embutidas do mpv (is_weak: true), mas com priority negativa = inativas
+    const bindings = (await c.getProperty('input-bindings')) as { key: string; cmd: string; section: string; priority: number; is_weak?: boolean }[]
+    expect(Array.isArray(bindings)).toBe(true)
+    const weak = bindings.filter((b) => b.is_weak)
+    expect(weak.length).toBeGreaterThan(0)
+    expect(weak.filter((b) => b.priority >= 0)).toEqual([])
+    const active = bindings.filter((b) => b.priority >= 0)
+    const quitKeys = active.filter((b) => b.cmd === 'quit').map((b) => b.key)
+    expect(quitKeys).toEqual(expect.arrayContaining(['q', 'Q']))
+    for (const k of ['q', 'Q']) expect(active.filter((b) => b.key === k).map((b) => b.cmd)).toEqual(['quit'])
+    const forbidden = /playlist-next|playlist-prev|playlist-play-index|delete-file|open-file|loadfile|loadlist/
+    expect(active.filter((b) => forbidden.test(b.cmd))).toEqual([])
+    // seções do uosc (mouse) e do input.conf: nada perigoso nem quando ativadas
+    expect(bindings.filter((b) => !b.is_weak && forbidden.test(b.cmd))).toEqual([])
+
+    const exit = new Promise<void>((r) => child!.once('exit', () => r()))
+    await c.command('quit').catch(() => undefined)
+    await Promise.race([exit, sleep(5000)])
+    const text = readFileSync(log, 'utf8')
+    expect(text).toMatch(/Reading config file .*mpv\.conf/)
+    expect(text).toMatch(/Input config file .*input\.conf parsed: \d+ binds/)
+    // nenhuma opção desconhecida/inválida no mpv.conf nem tecla/comando inválido no input.conf
+    expect(text).not.toMatch(/Error parsing option|Option .* not found|unknown option|Setting commandline option .* failed/i)
+    expect(text).not.toMatch(/\]\[[ewf]\]\[(cplayer|input|options|cfg|global)\]/)
+  }, 30000)
+
   it('carrega o uosc a partir da pasta de configuração embutida, sem erros', async () => {
     const { video } = prepare()
     const log = join(dir!, 'mpv.log')
