@@ -172,6 +172,8 @@ mpv --input-ipc-server=\\.\pipe\brammp4-<aleatório> --fullscreen --force-window
     "<caminho do arquivo>"
 ```
 
+A legenda externa escolhida é selecionada depois do `file-loaded`, procurando o arquivo na `track-list` do mpv (o id depende da ordem em que o mpv registra as legendas).
+
 Durante a reprodução o app observa `time-pos`, `duration` e `pause` pelo IPC.
 
 Quando salvar:
@@ -179,13 +181,13 @@ Quando salvar:
 - a cada 5 s durante a reprodução;
 - ao pausar;
 - ao fechar o mpv (evento `end-file` ou saída do processo, usando a última posição conhecida);
-- no evento `powerMonitor` `shutdown` do Electron, que força a gravação imediata.
+- como reforço de melhor esforço: ao suspender o notebook (`powerMonitor` `suspend`), no fim de sessão do Windows (`session-end` da janela, quando a tipagem do Electron tiver o evento) e ao fechar o app (`before-quit`, que grava e encerra o mpv). O evento `shutdown` do `powerMonitor` só existe em Linux e macOS.
 
 Com o SQLite em modo WAL, uma gravação já confirmada sobrevive a um desligamento abrupto. Perda máxima: 5 s.
 
 Regras:
 
-- Assistido: posição maior ou igual a 90% da duração, ou faltando menos de 2 min. Marca `watched = 1`.
+- Assistido: posição maior ou igual a 90% da duração, ou faltando menos de 2 min. Marca `watched = 1`. A regra dos 2 min só vale depois da metade do vídeo (um clipe de 100 s não nasce assistido).
 - Retomar: se a posição salva for menor que 30 s, começa do zero; senão, começa 5 s antes do ponto salvo.
 - Próximo episódio: o menor `(temporada, episódio)` maior que o atual com arquivo disponível.
 - "Continuar assistindo": um card por título, com o item atualizado mais recentemente. Se ele estiver assistido,
@@ -307,7 +309,6 @@ Cada marco termina com uma release instalável pelo processo da seção 14.
 
 - Se o escopo `drive.appdata` é classificado pelo Google como sensível, e o efeito disso no aviso de "app não verificado"
   e na validade do refresh token enquanto o projeto do Google Cloud estiver em modo "Teste" (há relatos de expiração em 7 dias).
-- Fontes exatas e versões fixadas das builds portáteis do mpv e do ffmpeg para Windows, e as licenças (GPL/LGPL)
-  que acompanham os binários no instalador; para uso pessoal não há restrição prática, mas os textos de licença vão junto.
+- Resolvido no M2: mpv = build de CI oficial do `mpv-player/mpv` v0.41.0 (`x86_64-w64-mingw32`, SHA-256 fixado em `scripts/binaries.json`); uosc 5.13.0. Os textos de licença (mpv GPL e uosc) vão dentro do instalador.
 - Se o repositório continua privado (exige `gh auth login` no notebook) ou vira público (download direto, sem login).
 - Termos atuais da API do TMDB para uso pessoal não comercial.
