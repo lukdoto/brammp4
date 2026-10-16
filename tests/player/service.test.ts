@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as repo from '../../src/main/db/repo'
 import { getPrefs, getProgress, saveProgress } from '../../src/main/db/progress'
 import { MpvClient } from '../../src/main/player/mpv-client'
@@ -18,7 +18,19 @@ afterEach(async () => {
   created.services = []
 })
 
-function harness(over: { online?: boolean; exists?: (p: string) => boolean; mpvExe?: () => string } = {}) {
+function harness(
+  over: {
+    online?: boolean
+    exists?: (p: string) => boolean
+    mpvExe?: () => string
+    /** comandos que o FakeMpv ignora */
+    silent?: string[]
+    /** propriedades já presentes no FakeMpv quando o serviço conecta */
+    props?: Record<string, unknown>
+    commandTimeoutMs?: number
+    throwOnState?: boolean
+  } = {}
+) {
   const seeded = seedSeries({ online: over.online })
   const states: PlayerState[] = []
   let clock = 0
@@ -33,14 +45,20 @@ function harness(over: { online?: boolean; exists?: (p: string) => boolean; mpvE
       const pipe = args.find((a) => a.startsWith('--input-ipc-server='))!.slice('--input-ipc-server='.length)
       fakes.mpv = new FakeMpv(pipe)
       created.mpv.push(fakes.mpv)
+      for (const c of over.silent ?? []) fakes.mpv.silentCommands.add(c)
+      for (const [k, v] of Object.entries(over.props ?? {})) fakes.mpv.props.set(k, v)
       fakes.child = new FakeChild()
       return fakes.child
     },
-    connect: (pipe, o) => MpvClient.connect(pipe, { ...o, delayMs: 5 }),
+    connect: (pipe, o) => MpvClient.connect(pipe, { ...o, delayMs: 5, ...(over.commandTimeoutMs ? { commandTimeoutMs: over.commandTimeoutMs } : {}) }),
+    exitGraceMs: 20,
     newPipePath: uniquePipePath,
     exists: over.exists ?? (() => present),
     now: () => clock,
-    onState: (s) => states.push(s)
+    onState: (s) => {
+      states.push(s)
+      if (over.throwOnState) throw new Error('onState quebrou')
+    }
   })
   created.services.push(service)
   return { ...seeded, service, states, fakes, tick: (ms: number) => (clock += ms), setPresent: (v: boolean) => (present = v) }
@@ -288,6 +306,91 @@ describe('PlayerService: progresso', () => {
     h.service.flush()
     expect(saved(h)?.positionS).toBe(650)
     expect(h.service.state().playing).toBe(true)
+  })
+})
+
+describe('PlayerService: ciclo de vida da sessão', () => {
+  const saved = (h: ReturnType<typeof harness>) => getProgress(h.db, h.keys[0]!)
+
+  it('end-file eof e saída do processo no mesmo instante: continua "ended" e assistido', async () => {
+    const h = harness()
+    await h.service.play(req(h, { startS: 600 }))
+    const mpv = h.fakes.mpv!
+    mpv.setProp('duration', 1380)
+    mpv.props.set('time-pos', 1370)
+    mpv.emitEvent({ event: 'playback-restart' })
+    await waitFor(() => saved(h)?.positionS === 1370)
+    mpv.emitEvent({ event: 'end-file', reason: 'eof' })
+    h.fakes.child!.exitNow(0) // sem esperar: o exit pode chegar antes do end-file
+    await waitFor(() => h.states.at(-1)?.playing === false)
+    expect(h.states.at(-1)?.closedReason).toBe('ended')
+    expect(saved(h)).toMatchObject({ positionS: 1380, watched: true })
+  })
+
+  it('play que continua depois de a sessão morrer não anuncia "tocando" nem devolve ok', async () => {
+    const h = harness({ silent: ['observe_property'], commandTimeoutMs: 100 })
+    const p = h.service.play(req(h))
+    await waitFor(() => (h.fakes.mpv?.commands.length ?? 0) > 0) // o serviço já está nos observes
+    h.fakes.child!.exitNow(1)
+    expect(await p).toEqual({ ok: false, error: 'start-failed' })
+    expect(h.states.at(-1)).toMatchObject({ playing: false, closedReason: 'error' })
+    expect(h.service.state().playing).toBe(false)
+  })
+
+  it('socket caiu com o mpv vivo: o processo é encerrado e a sessão fecha', async () => {
+    const h = harness()
+    await h.service.play(req(h))
+    h.fakes.mpv!.dropClients()
+    await waitFor(() => h.states.at(-1)?.playing === false)
+    expect(h.fakes.child!.killed).toBe(true)
+    expect(h.service.state().playing).toBe(false)
+  })
+
+  it('onState que lança não impede a sessão de fechar', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const h = harness({ throwOnState: true })
+      expect(await h.service.play(req(h))).toEqual({ ok: true })
+      h.fakes.child!.exitNow(0)
+      await waitFor(() => !h.service.state().playing && h.states.length >= 2)
+      expect(h.states.at(-1)).toMatchObject({ playing: false })
+      expect(err).toHaveBeenCalled()
+    } finally {
+      err.mockRestore()
+    }
+  })
+
+  it('syncState arma com a posição que o mpv já tinha ao conectar', async () => {
+    const h = harness({ props: { 'time-pos': 605, seeking: false, duration: 1380, 'track-list': [] } })
+    await h.service.play(req(h, { startS: 600 }))
+    await waitFor(() => saved(h)?.positionS === 605)
+  })
+
+  it('syncState não arma enquanto o mpv ainda está buscando (seeking)', async () => {
+    const h = harness({ props: { 'time-pos': 605, seeking: true, 'track-list': [] } })
+    await h.service.play(req(h, { startS: 600 }))
+    await sleep(40)
+    expect(saved(h)).toBeUndefined()
+    h.fakes.mpv!.props.set('time-pos', 606)
+    h.fakes.mpv!.emitEvent({ event: 'playback-restart' })
+    await waitFor(() => saved(h)?.positionS === 606)
+  })
+
+  it('flushAndStop manda "quit" ao mpv', async () => {
+    const h = harness()
+    await h.service.play(req(h))
+    await h.service.flushAndStop()
+    expect(h.fakes.mpv!.commands.some((c) => c[0] === 'quit')).toBe(true)
+  })
+
+  it('flushAndStop não espera para sempre por um mpv que não responde ao quit', async () => {
+    const h = harness({ silent: ['quit'] })
+    await h.service.play(req(h))
+    const t0 = Date.now()
+    await h.service.flushAndStop()
+    expect(Date.now() - t0).toBeLessThan(1000)
+    expect(h.fakes.child!.killed).toBe(true)
+    expect(h.service.state().playing).toBe(false)
   })
 })
 

@@ -28,6 +28,8 @@ export interface PlayerDeps {
   exists: (path: string) => boolean
   now: () => number
   onState: (s: PlayerState) => void
+  /** espera entre a saída do processo e o fechamento da sessão, para o end-file em trânsito chegar (padrão 200 ms) */
+  exitGraceMs?: number
 }
 
 interface Session {
@@ -39,6 +41,9 @@ interface Session {
   externalAbs?: string
   startedAt: number
   child: ChildLike
+  /** o processo já saiu (exit/error) */
+  exited: boolean
+  exitTimer?: NodeJS.Timeout
   tracker: ProgressTracker
   client?: MpvClient
   live: boolean
@@ -178,23 +183,27 @@ export class PlayerService {
       ...(sub.kind === 'external' ? { externalAbs: join(file.root_path, sub.relPath) } : {}),
       startedAt: this.deps.now(),
       child,
+      exited: false,
       tracker,
       live: false,
       closed: false,
       trackList: []
     }
     this.session = session
-    let exited = false
     const gone = () => {
-      exited = true
-      this.finalize(session)
+      session.exited = true
+      if (session.closed) return
+      if (!session.live) return this.finalize(session)
+      // o exit do processo e o end-file pelo pipe chegam em ordem não garantida: dá um instante ao pipe
+      session.exitTimer ??= setTimeout(() => this.finalize(session), this.deps.exitGraceMs ?? 200)
+      session.exitTimer.unref()
     }
     child.on('exit', gone)
     child.on('error', gone)
 
     let client: MpvClient
     try {
-      client = await this.deps.connect(pipePath, { shouldAbort: () => exited })
+      client = await this.deps.connect(pipePath, { shouldAbort: () => session.exited })
     } catch {
       this.abort(session)
       return { ok: false, error: 'start-failed' }
@@ -212,7 +221,9 @@ export class PlayerService {
     for (const p of OBSERVED) await client.observe(p).catch(() => {})
     // eventos anteriores à conexão não voltam: pergunta ao mpv em que ponto está
     await this.syncState(session)
-    this.deps.onState(this.state())
+    // a sessão pode ter morrido durante os awaits: finalize já anunciou o estado real
+    if (session.closed) return { ok: false, error: 'start-failed' }
+    this.emit(this.state())
     return { ok: true }
   }
 
@@ -295,6 +306,14 @@ export class PlayerService {
     }
   }
 
+  private emit(state: PlayerState): void {
+    try {
+      this.deps.onState(state)
+    } catch (err) {
+      console.error('[player] falha ao notificar o estado', err)
+    }
+  }
+
   private abort(s: Session): void {
     try {
       s.child.kill()
@@ -308,7 +327,15 @@ export class PlayerService {
   private finalize(s: Session): void {
     if (s.closed) return
     s.closed = true
+    clearTimeout(s.exitTimer)
     s.tracker.flush()
+    if (!s.exited) {
+      try {
+        s.child.kill()
+      } catch {
+        /* já saiu */
+      }
+    }
     try {
       s.client?.close()
     } catch {
@@ -323,6 +350,6 @@ export class PlayerService {
         : s.endReason === 'eof'
           ? 'ended'
           : 'closed'
-    this.deps.onState({ playing: false, itemKey: s.itemKey, closedReason: reason })
+    this.emit({ playing: false, itemKey: s.itemKey, closedReason: reason })
   }
 }
