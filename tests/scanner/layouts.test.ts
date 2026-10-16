@@ -100,5 +100,17 @@ describe('scanLibrary com os layouts reais', () => {
     expect(cat.series.map((c) => c.name)).toEqual([AV, 'cowboy bebop', 'Frieren', 'X-Men 97'])
     expect(cat.movies.map((c) => c.name)).toEqual(['Avatar Aang The Last Airbender', 'Dune', 'Dune Part Two'])
     await expect(scan()).resolves.toMatchObject({ aborted: false, series: 4, movies: 3 })
+
+    // com a biblioteca offline, os títulos antigos (arquivos ausentes) continuam fora do catálogo
+    repo.setLibraryStatus(db, 'lib1', 'offline')
+    const off = repo.getCatalog(db)
+    expect(off.series.map((c) => c.name)).toEqual([AV, 'cowboy bebop', 'Frieren', 'X-Men 97'])
+    expect(off.movies.map((c) => c.name)).toEqual(['Avatar Aang The Last Airbender', 'Dune', 'Dune Part Two'])
+  })
+
+  it('re-scan renomeia título gravado com outra capitalização', async () => {
+    repo.upsertTitle(db, { kind: 'series', localKey: 'series:cowboy-bebop', name: 'COWBOY BEBOP' })
+    await scan()
+    expect(repo.getCatalog(db).series.map((c) => c.name)).toContain('cowboy bebop')
   })
 })

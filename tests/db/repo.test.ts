@@ -28,7 +28,7 @@ describe('repo', () => {
     expect(a).toBe(b)
   })
 
-  it('upsertItem guarda o título do episódio e não o sobrescreve com vazio', () => {
+  it('upsertItem: nome novo vence, nome vazio mantém o antigo', () => {
     const titleId = repo.upsertTitle(db, { kind: 'series', localKey: 'series:dark', name: 'Dark' })
     const key = 'local:dark:S01E01'
     repo.upsertItem(db, { key, titleId, season: 1, episode: 1 })
@@ -38,8 +38,20 @@ describe('repo', () => {
     repo.upsertItem(db, { key, titleId, season: 1, episode: 1, name: 'Segredos' })
     expect(nameOf()).toBe('Segredos')
     repo.upsertItem(db, { key, titleId, season: 1, episode: 1 })
-    repo.upsertItem(db, { key, titleId, season: 1, episode: 1, name: 'Outro' })
     expect(nameOf()).toBe('Segredos')
+    repo.upsertItem(db, { key, titleId, season: 1, episode: 1, name: 'Outro' })
+    expect(nameOf()).toBe('Outro')
+  })
+
+  it('upsertTitle renomeia e completa o ano, exceto título já casado (tmdb_id)', () => {
+    const id = repo.upsertTitle(db, { kind: 'series', localKey: 'series:dark', name: 'DARK' })
+    repo.upsertTitle(db, { kind: 'series', localKey: 'series:dark', name: 'Dark', year: 2017 })
+    repo.upsertTitle(db, { kind: 'series', localKey: 'series:dark', name: 'Dark' })
+    const row = () => db.prepare('SELECT name, year FROM titles WHERE id = ?').get(id) as { name: string; year: number | null }
+    expect(row()).toEqual({ name: 'Dark', year: 2017 })
+    db.prepare('UPDATE titles SET tmdb_id = 1 WHERE id = ?').run(id)
+    repo.upsertTitle(db, { kind: 'series', localKey: 'series:dark', name: 'OUTRO', year: 1999 })
+    expect(row()).toEqual({ name: 'Dark', year: 2017 })
   })
 
   it('upsertFile com probe undefined preserva os dados lidos antes', () => {

@@ -34,16 +34,18 @@ export function setLastScan(db: Db, id: string): void {
 }
 
 export function upsertTitle(db: Db, t: { kind: 'series' | 'movie'; localKey: string; name: string; year?: number }): number {
-  db.prepare('INSERT INTO titles (kind, local_key, name, year) VALUES (?, ?, ?, ?) ON CONFLICT(local_key) DO NOTHING').run(
-    t.kind, t.localKey, t.name, t.year ?? null
-  )
+  db.prepare(
+    `INSERT INTO titles (kind, local_key, name, year) VALUES (?, ?, ?, ?)
+     ON CONFLICT(local_key) DO UPDATE SET name = excluded.name, year = COALESCE(excluded.year, titles.year)
+     WHERE titles.tmdb_id IS NULL`
+  ).run(t.kind, t.localKey, t.name, t.year ?? null)
   return (db.prepare('SELECT id FROM titles WHERE local_key = ?').get(t.localKey) as { id: number }).id
 }
 
 export function upsertItem(db: Db, i: { key: string; titleId: number; season: number | null; episode: number | null; name?: string }): void {
   db.prepare(
     `INSERT INTO items (key, title_id, season, episode, name) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET name = COALESCE(items.name, excluded.name)`
+     ON CONFLICT(key) DO UPDATE SET name = COALESCE(excluded.name, items.name)`
   ).run(i.key, i.titleId, i.season, i.episode, i.name ?? null)
 }
 
