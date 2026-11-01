@@ -1,18 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ReclassifyTarget, UnmatchedFile } from '../../../shared/types'
-import { parseEpisodeInput, reclassifyError } from '../format'
+import { parseEpisodeInput, parseYearInput, reclassifyError } from '../format'
 
 const SERIES_LIST_ID = 'unmatched-series'
 
-function parseYear(text: string): { ok: true; year?: number } | { ok: false } {
-  const t = text.trim()
-  if (!t) return { ok: true }
-  if (!/^\d{4}$/.test(t)) return { ok: false }
-  const year = Number(t)
-  return year >= 1880 && year <= 2200 ? { ok: true, year } : { ok: false }
-}
-
-function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => Promise<void> }) {
+function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => void }) {
   const [kind, setKind] = useState<'movie' | 'episode'>('movie')
   const [title, setTitle] = useState('')
   const [year, setYear] = useState('')
@@ -25,8 +17,8 @@ function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => Promise<void
   async function submit() {
     let target: ReclassifyTarget
     if (kind === 'movie') {
-      const y = parseYear(year)
-      if (!title.trim() || !y.ok) return setError('Informe o título e, se quiser, um ano com 4 dígitos.')
+      const y = parseYearInput(year)
+      if (!title.trim() || !y.ok) return setError('Informe o título e, se quiser, um ano entre 1870 e 2200.')
       target = { kind: 'movie', title: title.trim(), ...(y.year !== undefined ? { year: y.year } : {}) }
     } else {
       const se = parseEpisodeInput(season, episode)
@@ -37,15 +29,13 @@ function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => Promise<void
     setError(null)
     try {
       const r = await window.api.reclassify({ libraryId: file.libraryId, relPath: file.relPath, target })
-      if (r.ok) {
-        await onDone() // a linha some da lista
-        return
-      }
-      setError(r.error === 'offline' ? `${reclassifyError(r.error)} (${file.libraryLabel})` : reclassifyError(r.error))
+      if (r.ok) onDone() // a página recarrega a lista; se o arquivo continuar aqui, a linha fica livre
+      else setError(r.error === 'offline' ? `${reclassifyError(r.error)} (${file.libraryLabel})` : reclassifyError(r.error))
     } catch {
       setError('Não foi possível reclassificar este arquivo.')
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   return (
@@ -66,12 +56,12 @@ function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => Promise<void
           </select>
           {kind === 'movie' ? (
             <>
-              <input placeholder="Título" value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
+              <input placeholder="Título" maxLength={200} value={title} disabled={busy} onChange={(e) => setTitle(e.target.value)} />
               <input className="narrow" placeholder="Ano (opcional)" inputMode="numeric" value={year} disabled={busy} onChange={(e) => setYear(e.target.value)} />
             </>
           ) : (
             <>
-              <input placeholder="Série" list={SERIES_LIST_ID} value={series} disabled={busy} onChange={(e) => setSeries(e.target.value)} />
+              <input placeholder="Série" maxLength={200} list={SERIES_LIST_ID} value={series} disabled={busy} onChange={(e) => setSeries(e.target.value)} />
               <input className="narrow" placeholder="Temporada" inputMode="numeric" value={season} disabled={busy} onChange={(e) => setSeason(e.target.value)} />
               <input className="narrow" placeholder="Episódio" inputMode="numeric" value={episode} disabled={busy} onChange={(e) => setEpisode(e.target.value)} />
             </>
@@ -109,11 +99,6 @@ export function Unmatched({ refresh, onChanged }: { refresh: number; onChanged: 
     )
   }, [refresh])
 
-  async function done() {
-    await reload()
-    onChanged()
-  }
-
   return (
     <main>
       <h1>Não identificados</h1>
@@ -126,7 +111,7 @@ export function Unmatched({ refresh, onChanged }: { refresh: number; onChanged: 
       {failed && <p className="error">Não foi possível carregar a lista.</p>}
       {files && files.length === 0 && <p>Nenhum arquivo para identificar.</p>}
       {files?.map((f) => (
-        <Row key={`${f.libraryId}\u0000${f.relPath}`} file={f} onDone={done} />
+        <Row key={`${f.libraryId}\u0000${f.relPath}`} file={f} onDone={onChanged} />
       ))}
     </main>
   )

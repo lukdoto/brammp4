@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError, reclassifyError, parseEpisodeInput } from '../../src/renderer/src/format'
+import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError, reclassifyError, parseEpisodeInput, parseYearInput } from '../../src/renderer/src/format'
 
 describe('imageUrl', () => {
   it('imageUrl monta a URL do protocolo', () => {
@@ -93,6 +93,12 @@ describe('tela Não identificados', () => {
     for (const [s, e] of [['', '5'], ['1', ''], ['-1', '5'], ['1', '-5'], ['1.5', '2'], ['1', '2.5'], ['a', '2'], ['1', 'x'], ['201', '1'], ['1', '0'], ['1', '10000'], ['1e1', '2']]) {
       expect(parseEpisodeInput(s, e)).toBeNull()
     }
+  })
+  it('parseYearInput aceita vazio e 1870 a 2200', () => {
+    expect(parseYearInput('')).toEqual({ ok: true })
+    expect(parseYearInput(' 1999 ')).toEqual({ ok: true, year: 1999 })
+    expect(parseYearInput('1870')).toEqual({ ok: true, year: 1870 })
+    for (const y of ['1869', '2201', '99', 'abcd', '19999', '1e03']) expect(parseYearInput(y)).toEqual({ ok: false })
   })
   it('reclassifyError tem texto para os dois códigos', () => {
     for (const c of ['invalid', 'offline'] as const) {

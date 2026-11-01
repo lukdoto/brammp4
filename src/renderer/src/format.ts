@@ -102,6 +102,15 @@ export function parseEpisodeInput(season: string, episode: string): { season: nu
   return sn <= 200 && en >= 1 ? { season: sn, episode: en } : null
 }
 
+/** Ano opcional (1870 a 2200); vazio vira ok sem ano. */
+export function parseYearInput(text: string): { ok: true; year?: number } | { ok: false } {
+  const t = text.trim()
+  if (!t) return { ok: true }
+  if (!/^\d{4}$/.test(t)) return { ok: false }
+  const year = Number(t)
+  return year >= 1870 && year <= 2200 ? { ok: true, year } : { ok: false }
+}
+
 export function assignError(e: Exclude<AssignResult, { ok: true }>['error']): string {
   switch (e) {
     case 'invalid': return 'Seleção inválida. Feche a janela e tente de novo.'
