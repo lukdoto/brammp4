@@ -14,4 +14,5 @@ Reprodutor estilo streaming (Electron + TS + React) para filmes/séries em disco
 - Banco: `node:sqlite` (`DatabaseSync`), parâmetros posicionais `?`.
 - Caminhos relativos à biblioteca usam `/`. Progresso pertence ao item, nunca ao caminho.
 - Reprodução: `src/main/player/` (mpv por JSON IPC). `MpvClient`/`ProgressTracker`/regras são testáveis sem Electron; `npm run binaries` baixa mpv e uosc para `vendor/`. Teste contra o mpv real em `tests/player/mpv-real.test.ts` (roda quando `vendor/mpv/mpv.exe` existe).
+- Metadados: `src/main/metadata/` (cliente TMDB, cache de imagens, serviço). A chave do TMDB só existe no processo principal (cifrada com `safeStorage`); o renderer recebe apenas `hasKey`.
 - Uma branch por tarefa, PR para `main`. Release: tag `vX.Y.Z` igual a `version` do package.json.

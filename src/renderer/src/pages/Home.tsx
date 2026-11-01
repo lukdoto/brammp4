@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { Catalog, ContinueCard, LibraryView, TitleCard } from '../../../shared/types'
 import { ProgressBar } from '../components/ProgressBar'
-import { initials, posterStyle, TitleCardView } from '../components/TitleCardView'
+import { Poster } from '../components/Poster'
+import { TitleCardView } from '../components/TitleCardView'
 import { formatClock, itemLabel, progressRatio } from '../format'
 
 function Row({ title, cards, onOpen }: { title: string; cards: TitleCard[]; onOpen: (id: number) => void }) {
@@ -19,7 +20,7 @@ function ContinueCardView({ card, onPlay }: { card: ContinueCard; onPlay: (itemK
   const remaining = card.durationS ? Math.max(0, card.durationS - card.positionS) : undefined
   return (
     <div className={`card wide${card.available ? '' : ' unavailable'}`} onClick={() => onPlay(card.itemKey)} title={card.titleName}>
-      <div className="poster" style={posterStyle(card.titleName)}>{initials(card.titleName)}</div>
+      <Poster name={card.titleName} posterFile={card.posterFile} />
       <div className="name">{card.titleName}</div>
       <div className="meta">
         {card.kind === 'series' ? `${itemLabel(card.season, card.episode)}${card.episodeName ? ` · ${card.episodeName}` : ''}` : 'Filme'}

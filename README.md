@@ -4,11 +4,13 @@ Reprodutor pessoal estilo streaming para filmes e séries guardados em HDs exter
 Funciona offline, lembra episódio e posição de cada vídeo e faz backup do progresso
 no Google Drive (pasta oculta do app).
 
-Status: M1 (catálogo local) e M2 (reprodução e progresso com mpv + uosc) estão implementados. Backup (M4), metadados (M3) e acabamento (M5) vêm depois. A instalação abaixo funciona assim que houver uma release publicada. Especificação em `docs/superpowers/specs/`.
+Status: M1 (catálogo local), M2 (reprodução e progresso com mpv + uosc) e M3 (metadados do TMDB: capas, sinopses, nomes de episódios, correção manual e tela Não identificados) estão implementados. Backup (M4) e acabamento (M5) vêm depois. Especificação em `docs/superpowers/specs/`.
+
+Chave do TMDB (opcional; sem ela o catálogo funciona só com os nomes dos arquivos): crie uma conta gratuita em themoviedb.org, abra Configurações da conta, API, e copie a "Chave da API" (32 caracteres) ou o "Token de Leitura da API" (começa com `eyJ`); os dois funcionam. Cole em Configurações do app. A chave fica cifrada no seu usuário do Windows e nunca é exibida de volta.
 
 ## Instalação (Windows)
 
-Um comando no PowerShell (não precisa de Node, git nem login no GitHub):
+A instalação abaixo funciona assim que houver uma release publicada. Um comando no PowerShell (não precisa de Node, git nem login no GitHub):
 
 ```powershell
 irm https://raw.githubusercontent.com/lukdoto/brammp4/main/scripts/install.ps1 | iex

@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel } from '../../src/renderer/src/format'
+import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError, searchError, reclassifyError, parseEpisodeInput, parseYearInput } from '../../src/renderer/src/format'
+
+describe('imageUrl', () => {
+  it('imageUrl monta a URL do protocolo', () => {
+    expect(imageUrl('w342-abc.jpg')).toBe('brammp-img://img/w342-abc.jpg')
+    expect(imageUrl('w780-A_b-9.jpg')).toBe('brammp-img://img/w780-A_b-9.jpg')
+  })
+  it('imageUrl devolve undefined para vazio, ../ e tipo errado', () => {
+    expect(imageUrl(undefined)).toBeUndefined()
+    expect(imageUrl('')).toBeUndefined()
+    expect(imageUrl('../w342-abc.jpg')).toBeUndefined()
+    expect(imageUrl('w342-a/b.jpg')).toBeUndefined()
+    expect(imageUrl('w342-a\\b.jpg')).toBeUndefined()
+    expect(imageUrl('w500-abc.jpg')).toBeUndefined()
+    expect(imageUrl('w342-abc.png')).toBeUndefined()
+    expect(imageUrl('w342-abc.jpg\n')).toBeUndefined()
+  })
+})
 
 describe('format', () => {
   it('resolução', () => {
@@ -65,5 +82,54 @@ describe('relógio e progresso', () => {
     expect(audioLabel({ typeIndex: 2, codec: 'aac', title: 'Dublado', isDefault: false })).toBe('Idioma desconhecido · Dublado · AAC')
     expect(subLabel({ source: 'external', externalPath: 'a.srt', lang: 'por', codec: 'srt', isDefault: false, isForced: false, isSdh: false })).toBe('Português (arquivo)')
     expect(subLabel({ source: 'embedded', typeIndex: 1, lang: 'eng', codec: 'subrip', isDefault: false, isForced: true, isSdh: true })).toBe('Inglês (forçada) (SDH)')
+  })
+})
+
+describe('tela Não identificados', () => {
+  it('parseEpisodeInput aceita "1" "5" e rejeita vazio, negativo, decimal, texto', () => {
+    expect(parseEpisodeInput('1', '5')).toEqual({ season: 1, episode: 5 })
+    expect(parseEpisodeInput(' 0 ', ' 12 ')).toEqual({ season: 0, episode: 12 })
+    expect(parseEpisodeInput('200', '9999')).toEqual({ season: 200, episode: 9999 })
+    for (const [s, e] of [['', '5'], ['1', ''], ['-1', '5'], ['1', '-5'], ['1.5', '2'], ['1', '2.5'], ['a', '2'], ['1', 'x'], ['201', '1'], ['1', '0'], ['1', '10000'], ['1e1', '2']]) {
+      expect(parseEpisodeInput(s, e)).toBeNull()
+    }
+  })
+  it('parseYearInput aceita vazio e 1870 a 2200', () => {
+    expect(parseYearInput('')).toEqual({ ok: true })
+    expect(parseYearInput(' 1999 ')).toEqual({ ok: true, year: 1999 })
+    expect(parseYearInput('1870')).toEqual({ ok: true, year: 1870 })
+    for (const y of ['1869', '2201', '99', 'abcd', '19999', '1e03']) expect(parseYearInput(y)).toEqual({ ok: false })
+  })
+  it('reclassifyError tem texto para os dois códigos', () => {
+    for (const c of ['invalid', 'offline'] as const) {
+      expect(reclassifyError(c).length).toBeGreaterThan(0)
+      expect(reclassifyError(c)).not.toContain('undefined')
+    }
+    expect(reclassifyError('offline')).toContain('Conecte')
+  })
+})
+
+describe('mensagens de erro do TMDB', () => {
+  const keyCodes = ['invalid', 'invalid-key', 'network', 'encryption-unavailable'] as const
+  const assignCodes = ['invalid', 'no-key', 'network', 'rate-limit', 'invalid-key', 'bad-response', 'not-found', 'kind-mismatch'] as const
+  it('tmdbKeyError cobre todos os códigos com texto não vazio', () => {
+    for (const c of keyCodes) expect(tmdbKeyError(c).length).toBeGreaterThan(0)
+  })
+  it('assignError cobre todos os códigos com texto não vazio', () => {
+    for (const c of assignCodes) expect(assignError(c).length).toBeGreaterThan(0)
+  })
+  it('nenhuma mensagem contém a palavra "undefined"', () => {
+    for (const c of keyCodes) expect(tmdbKeyError(c)).not.toContain('undefined')
+    for (const c of assignCodes) expect(assignError(c)).not.toContain('undefined')
+  })
+  it('searchError cobre todos os códigos da busca, em português, sem "Nenhum resultado"', () => {
+    const searchCodes = ['invalid', 'no-key', 'network', 'rate-limit', 'invalid-key', 'bad-response'] as const
+    for (const c of searchCodes) {
+      expect(searchError(c).length).toBeGreaterThan(0)
+      expect(searchError(c)).not.toContain('undefined')
+      expect(searchError(c)).not.toMatch(/nenhum resultado/i)
+    }
+    expect(searchError('no-key')).toContain('Configurações')
+    expect(searchError('invalid')).not.toBe(assignError('invalid'))
   })
 })

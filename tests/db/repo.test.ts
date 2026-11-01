@@ -157,6 +157,55 @@ describe('adicionados recentemente e temporadas', () => {
   })
 })
 
+describe('metadados do TMDB na leitura', () => {
+  it('getCatalog devolve posterFile quando titles.poster_cache está preenchido', () => {
+    const { db, titleId } = seedSeries()
+    expect(repo.getCatalog(db).series[0]!.posterFile).toBeUndefined()
+    db.prepare('UPDATE titles SET poster_cache = ? WHERE id = ?').run('w342-abc.jpg', titleId)
+    const cat = repo.getCatalog(db)
+    expect(cat.series[0]!.posterFile).toBe('w342-abc.jpg')
+    expect(cat.recent[0]!.posterFile).toBe('w342-abc.jpg')
+  })
+
+  it('getTitleDetail devolve overview, posterFile, backdropFile e matchSource', () => {
+    const { db, titleId } = seedSeries()
+    db.prepare(
+      `UPDATE titles SET overview = ?, poster_cache = ?, backdrop_cache = ?, match_source = ?, tmdb_id = 70523 WHERE id = ?`
+    ).run('Uma cidade alemã.', 'w342-p.jpg', 'w780-b.jpg', 'manual', titleId)
+    const d = repo.getTitleDetail(db, titleId)!
+    expect(d).toMatchObject({ overview: 'Uma cidade alemã.', posterFile: 'w342-p.jpg', backdropFile: 'w780-b.jpg', matchSource: 'manual' })
+  })
+
+  it('nome do episódio prefere tmdb_name ao name do arquivo', () => {
+    const { db, titleId, keys } = seedSeries()
+    repo.upsertItem(db, { key: keys[0]!, titleId, season: 1, episode: 1, name: 'do arquivo' })
+    db.prepare('UPDATE items SET tmdb_name = ?, overview = ? WHERE key = ?').run('Segredos', 'Sinopse do episódio', keys[0])
+    const items = repo.getTitleDetail(db, titleId)!.items
+    expect(items[0]).toMatchObject({ name: 'Segredos', overview: 'Sinopse do episódio' })
+    expect(items[1]!.overview).toBeUndefined()
+  })
+
+  it('upsertItem do scanner não apaga tmdb_name', () => {
+    const { db, titleId, keys } = seedSeries()
+    db.prepare('UPDATE items SET tmdb_name = ? WHERE key = ?').run('Segredos', keys[0])
+    repo.upsertItem(db, { key: keys[0]!, titleId, season: 1, episode: 1, name: 'outro do arquivo' })
+    expect(repo.getTitleDetail(db, titleId)!.items[0]!.name).toBe('Segredos')
+    expect((db.prepare('SELECT tmdb_name FROM items WHERE key = ?').get(keys[0]) as { tmdb_name: string }).tmdb_name).toBe('Segredos')
+  })
+
+  it('título sem metadados continua sem campos opcionais', () => {
+    const { db, titleId } = seedSeries()
+    const d = repo.getTitleDetail(db, titleId)!
+    expect(d.overview).toBeUndefined()
+    expect(d.posterFile).toBeUndefined()
+    expect(d.backdropFile).toBeUndefined()
+    expect(d.matchSource).toBeUndefined()
+    expect('overview' in d).toBe(false)
+    expect('overview' in d.items[0]!).toBe(false)
+    expect(repo.getCatalog(db).series[0]).not.toHaveProperty('posterFile')
+  })
+})
+
 describe('detalhe do título com progresso', () => {
   it('traz o progresso do episódio e a duração do arquivo', () => {
     const { db, titleId, keys } = seedSeries()

@@ -75,7 +75,7 @@ Princípio: o progresso pertence ao episódio, nunca ao arquivo nem ao HD.
   - série identificada no TMDB: `tmdb:tv:<id>:S01E03`
   - filme identificado no TMDB: `tmdb:movie:<id>`
   - ainda sem TMDB: `local:<nome-normalizado>:S01E03` ou `local:<nome-normalizado>-<ano>`
-  - quando um item `local:` for associado ao TMDB, a chave é migrada no banco e o progresso vai junto.
+  - quando um item `local:` for associado ao TMDB, a chave **não** é migrada no banco (ver nota na seção 5); o vínculo fica em `titles.tmdb_id`.
 - Um item pode ter zero, um ou vários arquivos, em qualquer HD.
 - Cada biblioteca (a pasta do catálogo escolhida pelo usuário dentro de um disco) é identificada por um ID único
   gravado no arquivo `.brammp4.json` dentro dessa pasta
@@ -102,6 +102,14 @@ prefs       (title_id PK, audio_lang, sub_lang)   -- última escolha por série
 unmatched   (file_id PK, reason)
 settings    (key PK, value)
 ```
+
+Nota (M3): `items.key` permanece `local:<nome-normalizado>:SxxExx` para sempre, mesmo após o título ser associado ao TMDB;
+o vínculo fica em `titles.tmdb_id`. O motivo é que o scanner recalcula a chave `local:` a partir do nome do arquivo em
+cada varredura: migrar a chave para `tmdb:` faria a varredura seguinte recriar os itens `local:` (duplicados e sem
+progresso). O backup do M4 traduz para `tmdb:tv:<id>:S01E03` (ou `tmdb:movie:<id>`) ao exportar, a partir de
+`titles.tmdb_id`, e faz a tradução inversa ao restaurar. Também no M3: `titles.match_source` (`auto` | `manual`),
+`titles.tmdb_checked_at`, `items.tmdb_name` e a tabela `assignments` (reclassificações manuais de arquivos não
+identificados, por biblioteca e caminho relativo).
 
 `progress.item_key` não tem chave estrangeira obrigatória para `items`: o progresso restaurado de um backup
 pode chegar antes de o HD correspondente ser varrido.
@@ -203,10 +211,22 @@ Regras:
 - Ao encontrar um título novo com internet disponível: busca por nome (e ano, se houver), escolhe o primeiro resultado
   e permite corrigir manualmente na tela do título.
 - Capas e fundos são baixados para a pasta de dados do app; o catálogo só lê do cache local.
-- Sem internet: o título aparece com o nome do arquivo e uma capa gerada (frame do vídeo via ffmpeg ou placeholder);
+- Sem internet: o título aparece com o nome do arquivo e uma capa gerada (placeholder);
   a busca é refeita na próxima vez que houver conexão.
 - Atribuição: tela "Sobre" com o logo aprovado do TMDB (menor que o logo do app) e o aviso
   "Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB."
+
+Desvios decididos no M3 (plano `docs/superpowers/plans/2026-10-16-m3-metadados-tmdb.md`):
+
+1. **Chave local permanente.** `items.key` continua `local:<nome-normalizado>:SxxExx` depois do vínculo com o TMDB;
+   detalhes na nota (M3) da seção 5 (Modelo de dados).
+2. **Sem frame de vídeo como capa offline.** Só o ffprobe é embutido, não o ffmpeg; a capa sem TMDB é o placeholder
+   gerado (iniciais + cor por nome). Títulos não identificados ficam sem imagem real.
+3. **Logo do TMDB só no M5.** No M3 entra apenas o texto de atribuição obrigatório, na tela Configurações; o logo
+   aprovado entra com a tela "Sobre" (exige baixar o arquivo oficial).
+4. **Idioma fixo `pt-BR`** nas consultas; sinopse vazia continua vazia (sem segunda consulta em inglês).
+5. **Candidatos da correção manual sem pôster** (nome, ano e trecho da sinopse): mostrar imagens remotas exigiria
+   afrouxar a CSP. Homônimos se distinguem pelo ano e pela sinopse.
 
 ## 10. Backup no Google Drive
 
@@ -301,7 +321,7 @@ Cada marco termina com uma release instalável pelo processo da seção 14.
 1. **M1, Catálogo local instalável:** estrutura do projeto, pipeline de release com binários embutidos, `db`, `parser`
    (vídeos e legendas), `libraries` com seletor de pasta e verificação de conexão, `scanner`, telas Início e Título sem capas.
 2. **M2, Reprodução e progresso:** `player` com mpv + uosc, painel de play, gravação de progresso e barras.
-3. **M3, Metadados:** TMDB, cache de capas, tela Não identificados.
+3. **M3, Metadados (concluído):** TMDB, cache de capas, tela Não identificados.
 4. **M4, Backup:** login Google, exportação, mescla e restauração.
 5. **M5, Acabamento:** instalador, ícone, atalhos de teclado, tela Sobre.
 

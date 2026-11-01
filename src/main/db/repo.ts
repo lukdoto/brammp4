@@ -128,18 +128,18 @@ export function librarySummary(db: Db, libraryId: string) {
   }
 }
 
-interface CatalogRow { id: number; kind: 'series' | 'movie'; name: string; year: number | null; label: string; status: LibraryStatus; missing: number; added_at: string | null }
+interface CatalogRow { id: number; kind: 'series' | 'movie'; name: string; year: number | null; label: string; status: LibraryStatus; missing: number; added_at: string | null; poster_cache: string | null }
 
 export function getCatalog(db: Db): Catalog {
   const rows = db.prepare(
-    `SELECT t.id, t.kind, t.name, t.year, t.added_at, l.label, l.status, f.missing
+    `SELECT t.id, t.kind, t.name, t.year, t.added_at, t.poster_cache, l.label, l.status, f.missing
      FROM titles t JOIN items i ON i.title_id = t.id JOIN files f ON f.item_key = i.key JOIN libraries l ON l.id = f.library_id
      WHERE f.missing = 0`
   ).all() as unknown as CatalogRow[]
   type Card = TitleCard & { visible: boolean; addedAt: string }
   const cards = new Map<number, Card>()
   for (const r of rows) {
-    const c = cards.get(r.id) ?? { id: r.id, kind: r.kind, name: r.name, year: opt(r.year), available: false, offlineLabels: [], visible: false, addedAt: r.added_at ?? '' }
+    const c = cards.get(r.id) ?? { id: r.id, kind: r.kind, name: r.name, year: opt(r.year), available: false, offlineLabels: [], visible: false, addedAt: r.added_at ?? '', ...(r.poster_cache ? { posterFile: r.poster_cache } : {}) }
     if (r.status === 'online') c.available = true
     else if (!c.offlineLabels.includes(r.label)) c.offlineLabels.push(r.label)
     c.visible = true
@@ -153,12 +153,19 @@ export function getCatalog(db: Db): Catalog {
 }
 
 export function getTitleDetail(db: Db, id: number): TitleDetail | null {
-  const t = db.prepare('SELECT id, kind, name, year FROM titles WHERE id = ?').get(id) as unknown as
-    | { id: number; kind: 'series' | 'movie'; name: string; year: number | null }
+  const t = db.prepare(
+    'SELECT id, kind, name, year, overview, poster_cache, backdrop_cache, match_source FROM titles WHERE id = ?'
+  ).get(id) as unknown as
+    | {
+        id: number; kind: 'series' | 'movie'; name: string; year: number | null; overview: string | null
+        poster_cache: string | null; backdrop_cache: string | null; match_source: 'auto' | 'manual' | null
+      }
     | undefined
   if (!t) return null
-  const items = db.prepare('SELECT key, season, episode, name FROM items WHERE title_id = ? ORDER BY season, episode').all(id) as {
-    key: string; season: number | null; episode: number | null; name: string | null
+  const items = db.prepare(
+    'SELECT key, season, episode, COALESCE(tmdb_name, name) AS name, overview FROM items WHERE title_id = ? ORDER BY season, episode'
+  ).all(id) as {
+    key: string; season: number | null; episode: number | null; name: string | null; overview: string | null
   }[]
   const files = db.prepare(
     `SELECT f.id, f.item_key, f.rel_path, f.height, f.video_codec, f.duration_s, f.missing, l.label, l.status,
@@ -198,8 +205,16 @@ export function getTitleDetail(db: Db, id: number): TitleDetail | null {
     .filter((i) => byItem.has(i.key))
     .map((i) => ({
       key: i.key, season: i.season, episode: i.episode, ...(i.name ? { name: i.name } : {}),
+      ...(i.overview ? { overview: i.overview } : {}),
       ...(progressByItem.has(i.key) ? { progress: progressByItem.get(i.key)! } : {}),
       files: byItem.get(i.key)!
     }))
-  return { id: t.id, kind: t.kind, name: t.name, year: opt(t.year), items: itemViews }
+  return {
+    id: t.id, kind: t.kind, name: t.name, year: opt(t.year),
+    ...(t.overview ? { overview: t.overview } : {}),
+    ...(t.poster_cache ? { posterFile: t.poster_cache } : {}),
+    ...(t.backdrop_cache ? { backdropFile: t.backdrop_cache } : {}),
+    ...(t.match_source ? { matchSource: t.match_source } : {}),
+    items: itemViews
+  }
 }

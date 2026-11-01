@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path'
 import { openDatabase, type Db } from '../../src/main/db/database'
 import * as repo from '../../src/main/db/repo'
 import { scanLibrary } from '../../src/main/scanner/scan'
+import * as meta from '../../src/main/db/metadata'
 import type { ProbeResult } from '../../src/shared/types'
 
 let root: string
@@ -103,5 +104,92 @@ describe('scanLibrary', () => {
     rmSync(join(root, 'Filmes'), { recursive: true, force: true })
     await scanLibrary(lib(), { db, probe: okProbe, isOnline: async () => true })
     expect(repo.getCatalog(db).movies).toHaveLength(0)
+  })
+})
+
+describe('atribuições manuais', () => {
+  const scan = () => scanLibrary(lib(), { db, probe: okProbe, isOnline: async () => true })
+  const UNMATCHED = 'Filmes/aleatorio/Temporada 1/notas.mkv'
+  const unmatchedPaths = () => meta.listUnmatched(db).map((u) => u.relPath)
+
+  it('arquivo sem nome reconhecido aparece em unmatched', async () => {
+    await scan()
+    expect(unmatchedPaths()).toContain(UNMATCHED)
+  })
+
+  it('após setAssignment como episódio, a varredura cria a série, o item local:<slug>:S02E05 e remove o arquivo de unmatched', async () => {
+    meta.setAssignment(db, 'lib1', UNMATCHED, { kind: 'episode', series: 'Série Nova', season: 2, episode: 5 })
+    const s = await scan()
+    expect(s.unmatched).toBe(0)
+    expect(unmatchedPaths()).not.toContain(UNMATCHED)
+    const nova = repo.getCatalog(db).series.find((c) => c.name === 'Série Nova')!
+    expect(repo.getTitleDetail(db, nova.id)!.items.map((i) => i.key)).toEqual(['local:serie-nova:S02E05'])
+  })
+
+  it('atribuição como filme com ano gera local:<slug>-<ano>', async () => {
+    meta.setAssignment(db, 'lib1', UNMATCHED, { kind: 'movie', title: 'Filme Raro', year: 1999 })
+    await scan()
+    const m = repo.getCatalog(db).movies.find((c) => c.name === 'Filme Raro')!
+    expect(m.year).toBe(1999)
+    expect(repo.getTitleDetail(db, m.id)!.items.map((i) => i.key)).toEqual(['local:filme-raro-1999'])
+  })
+
+  it('reescanear com a atribuição não duplica itens', async () => {
+    meta.setAssignment(db, 'lib1', UNMATCHED, { kind: 'episode', series: 'Série Nova', season: 2, episode: 5 })
+    await scan()
+    await scan()
+    expect(repo.getCatalog(db).series.filter((c) => c.name === 'Série Nova')).toHaveLength(1)
+    const n = db.prepare('SELECT COUNT(*) AS n FROM items WHERE key = ?').get('local:serie-nova:S02E05') as { n: number }
+    const f = db.prepare('SELECT COUNT(*) AS n FROM files WHERE rel_path = ?').get(UNMATCHED) as { n: number }
+    expect([n.n, f.n]).toEqual([1, 1])
+  })
+
+  it('atribuição de arquivo que sumiu não quebra a varredura', async () => {
+    meta.setAssignment(db, 'lib1', 'nao/existe.mkv', { kind: 'movie', title: 'Fantasma' })
+    const s = await scan()
+    expect(s.aborted).toBe(false)
+    expect(repo.getCatalog(db).movies.map((c) => c.name)).not.toContain('Fantasma')
+  })
+
+  it('atribuir a uma série existente reutiliza o título (mesmo localKey)', async () => {
+    await scan()
+    meta.setAssignment(db, 'lib1', UNMATCHED, { kind: 'episode', series: 'La Casa de Papel', season: 3, episode: 1 })
+    await scan()
+    const cat = repo.getCatalog(db)
+    expect(cat.series).toHaveLength(1)
+    const keys = repo.getTitleDetail(db, cat.series[0]!.id)!.items.map((i) => i.key)
+    expect(keys).toContain('local:la-casa-de-papel:S03E01')
+    expect(keys).toContain('local:la-casa-de-papel:S01E01')
+  })
+
+  it('atribuir a série já identificada pelo TMDB reutiliza o título (mesma local_key)', async () => {
+    await scan()
+    const casa = repo.getCatalog(db).series[0]!
+    // o TMDB renomeou a série: o nome mostrado não reproduz mais a local_key
+    meta.applyTitleMatch(db, casa.id, { tmdbId: 71446, name: 'Money Heist', source: 'auto' })
+    const shown = repo.getCatalog(db).series[0]!
+    expect(shown.name).toBe('Money Heist')
+
+    const target = meta.targetForExistingSeries(db, { kind: 'episode', series: shown.name, season: 3, episode: 1 }, shown.id)
+    meta.setAssignment(db, 'lib1', UNMATCHED, target)
+    await scan()
+    const cat = repo.getCatalog(db)
+    expect(cat.series).toHaveLength(1)
+    expect(cat.series[0]).toMatchObject({ id: casa.id, name: 'Money Heist' })
+    const keys = repo.getTitleDetail(db, casa.id)!.items.map((i) => i.key)
+    expect(keys).toContain('local:la-casa-de-papel:S03E01')
+  })
+
+  it('targetForExistingSeries não mexe em filme, em nome que já bate nem em id que não é série', async () => {
+    await scan()
+    const casa = repo.getCatalog(db).series[0]!
+    const ep = { kind: 'episode' as const, series: 'La Casa de Papel', season: 1, episode: 9 }
+    expect(meta.targetForExistingSeries(db, ep, casa.id)).toEqual(ep)
+    expect(meta.targetForExistingSeries(db, { ...ep, series: 'Outra' }, undefined)).toEqual({ ...ep, series: 'Outra' })
+    expect(meta.targetForExistingSeries(db, { ...ep, series: 'Outra' }, 99999)).toEqual({ ...ep, series: 'Outra' })
+    const movie = repo.getCatalog(db).movies[0]
+    if (movie) expect(meta.targetForExistingSeries(db, { ...ep, series: 'Outra' }, movie.id)).toEqual({ ...ep, series: 'Outra' })
+    const film = { kind: 'movie' as const, title: 'X' }
+    expect(meta.targetForExistingSeries(db, film, casa.id)).toEqual(film)
   })
 })

@@ -70,6 +70,7 @@ interface ProgressRow {
   title_id: number
   kind: 'series' | 'movie'
   title_name: string
+  poster_cache: string | null
   item_key: string
   season: number | null
   episode: number | null
@@ -90,8 +91,8 @@ interface TitleItemRow {
 
 export function listContinueWatching(db: Db): ContinueCard[] {
   const rows = db.prepare(
-    `SELECT t.id AS title_id, t.kind, t.name AS title_name, i.key AS item_key, i.season, i.episode, i.name AS item_name,
-            p.position_s, p.duration_s, p.watched,
+    `SELECT t.id AS title_id, t.kind, t.name AS title_name, t.poster_cache, i.key AS item_key, i.season, i.episode,
+            COALESCE(i.tmdb_name, i.name) AS item_name, p.position_s, p.duration_s, p.watched,
             (SELECT MAX(f.duration_s) FROM files f WHERE f.item_key = i.key AND f.missing = 0) AS file_duration
      FROM progress p
      JOIN items i ON i.key = p.item_key
@@ -100,7 +101,7 @@ export function listContinueWatching(db: Db): ContinueCard[] {
      ORDER BY p.updated_at DESC, p.rowid DESC`
   ).all() as unknown as ProgressRow[]
   const itemsStmt = db.prepare(
-    `SELECT i.key, i.season, i.episode, i.name,
+    `SELECT i.key, i.season, i.episode, COALESCE(i.tmdb_name, i.name) AS name,
             EXISTS (SELECT 1 FROM files f JOIN libraries l ON l.id = f.library_id
                     WHERE f.item_key = i.key AND f.missing = 0 AND l.status = 'online') AS available
      FROM items i
@@ -118,7 +119,7 @@ export function listContinueWatching(db: Db): ContinueCard[] {
       name: x.name,
       available: x.available === 1
     }))
-    const base = { titleId: r.title_id, titleName: r.title_name, kind: r.kind }
+    const base = { titleId: r.title_id, titleName: r.title_name, kind: r.kind, ...(r.poster_cache ? { posterFile: r.poster_cache } : {}) }
     if (r.watched !== 1) {
       const duration = r.duration_s ?? r.file_duration ?? undefined
       cards.push({

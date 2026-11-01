@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { FileView, TitleDetail } from '../../../shared/types'
 import { resumeStart } from '../../../shared/rules'
+import { MatchDialog } from '../components/MatchDialog'
 import { ProgressBar } from '../components/ProgressBar'
-import { codecLabel, itemLabel, minutesLabel, progressRatio, resolutionLabel, seasonsOf } from '../format'
+import { codecLabel, imageUrl, itemLabel, minutesLabel, progressRatio, resolutionLabel, seasonsOf } from '../format'
 
 function FileBadges({ f }: { f: FileView }) {
   return (
@@ -16,8 +17,17 @@ function FileBadges({ f }: { f: FileView }) {
   )
 }
 
-export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh: number; onBack: () => void; onPlay: (itemKey: string) => void }) {
+function Backdrop({ file }: { file?: string }) {
+  const url = imageUrl(file)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [url])
+  if (!url || failed) return null
+  return <img className="backdrop" src={url} alt="" onError={() => setFailed(true)} />
+}
+
+export function TitlePage({ id, refresh, onBack, onPlay, onChanged }: { id: number; refresh: number; onBack: () => void; onPlay: (itemKey: string) => void; onChanged: () => void }) {
   const [detail, setDetail] = useState<TitleDetail | null>(null)
+  const [matching, setMatching] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [season, setSeason] = useState<number | null>(null)
   useEffect(() => {
@@ -52,8 +62,16 @@ export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh
     <main>
       <button onClick={onBack}>← Voltar</button>
       <div className="title-head">
-        <h1>{detail.name}</h1>
-        <div className="meta">{detail.year ?? ''}</div>
+        <Backdrop file={detail.backdropFile} />
+        <div className="title-head-body">
+          <h1>{detail.name}</h1>
+          <div className="meta">
+            {detail.year ?? ''}
+            {detail.matchSource === 'manual' && <span className="badge manual">Identificado manualmente</span>}
+          </div>
+          {detail.overview && <p className="overview">{detail.overview}</p>}
+          <button onClick={() => setMatching(true)}>Corrigir identificação</button>
+        </div>
       </div>
       {detail.kind === 'series' && (
         <div className="seasons">
@@ -81,6 +99,7 @@ export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh
                 {watched && <span className="badge done">Assistido</span>}
                 {offline && <span className="badge">conecte {best.libraryLabel}</span>}
               </div>
+              {item.overview && <div className="ep-overview">{item.overview}</div>}
               {ratio !== undefined && <ProgressBar ratio={ratio} watched={watched} />}
             </div>
             <button className="primary" disabled={offline} onClick={() => onPlay(item.key)}>
@@ -89,6 +108,15 @@ export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh
           </div>
         )
       })}
+      {matching && (
+        <MatchDialog
+          titleId={detail.id}
+          kind={detail.kind}
+          initialQuery={detail.name}
+          onClose={() => setMatching(false)}
+          onAssigned={onChanged}
+        />
+      )}
     </main>
   )
 }

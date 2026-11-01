@@ -1,15 +1,22 @@
-import { app, BrowserWindow, dialog, powerMonitor } from 'electron'
+import { app, BrowserWindow, dialog, net, powerMonitor, protocol, safeStorage } from 'electron'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { ScanSummary } from '../shared/types'
 import { openDatabase } from './db/database'
+import { debounce } from './debounce'
 import * as repo from './db/repo'
 import { registerIpc } from './ipc'
 import { LibraryMonitor } from './libraries/monitor'
 import { readMarker } from './libraries/marker'
 import { resolveLibrary } from './libraries/resolve'
-import { binPath, dbPath, mpvConfigDir, mpvPath } from './paths'
+import { createImageCache, resolveImagePath } from './metadata/images'
+import { createKeyring } from './metadata/keyring'
+import type { Cipher } from './metadata/secrets'
+import { MetadataService } from './metadata/service'
+import { createTmdbClient } from './metadata/tmdb'
+import { binPath, dbPath, imagesDir, mpvConfigDir, mpvPath } from './paths'
 import { newPipePath } from './player/args'
 import { MpvClient } from './player/mpv-client'
 import { PlayerService } from './player/service'
@@ -19,6 +26,16 @@ import { createScanScheduler } from './scanner/scheduler'
 
 let win: BrowserWindow | null = null
 let quitting = false
+
+/** Cifra real sobre o safeStorage do sistema; available() nunca é fixo. */
+const safeStorageCipher: Cipher = {
+  available: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (s) => safeStorage.encryptString(s),
+  decrypt: (b) => safeStorage.decryptString(b)
+}
+
+// o esquema precisa ser registrado como privilegiado antes de o app ficar pronto
+protocol.registerSchemesAsPrivileged([{ scheme: 'brammp-img', privileges: { secure: true, supportFetchAPI: true } }])
 
 function send(channel: string, payload: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -56,6 +73,24 @@ function main(): void {
     // ao abrir, tudo começa offline: o primeiro tick do monitor dispara a varredura do que estiver conectado
     repo.setAllLibrariesOffline(db)
 
+    protocol.handle('brammp-img', (req) => {
+      const p = resolveImagePath(imagesDir(), req.url)
+      return p ? net.fetch(pathToFileURL(p).toString()) : new Response(null, { status: 404 })
+    })
+
+    const keyring = createKeyring(db, safeStorageCipher, (key) => createTmdbClient({ key }))
+    // 500 ms depois da última mudança, mas no máximo a cada 2 s durante rodadas longas
+    const metadataChanged = debounce(() => send('metadata:changed', null), 500, 2000)
+    const metadata = new MetadataService({
+      db,
+      client: () => keyring.client(),
+      images: createImageCache({ dir: imagesDir() }),
+      now: () => new Date(),
+      onChange: () => metadataChanged.call(),
+      imageExists: (file) => existsSync(join(imagesDir(), file))
+    })
+    const syncMetadata = () => metadata.sync().catch((err) => console.error('[metadata] sync falhou', err instanceof Error ? err.name : 'erro'))
+
     // relê a biblioteca do banco a cada execução: se o disco voltou com outra letra no meio
     // de uma varredura, a repetição agendada pelo scheduler usa o endereço novo
     const scan = createScanScheduler((id): Promise<ScanSummary> => {
@@ -78,6 +113,7 @@ function main(): void {
         })
         .then((s) => {
           send('scan:done', s)
+          void syncMetadata()
           return s
         })
     })
@@ -97,7 +133,16 @@ function main(): void {
       }
     })
 
-    registerIpc({ db, window: () => win, scan, player })
+    const onKeyChanged = () => {
+      keyring.invalidate()
+      metadata.keyChanged()
+    }
+    registerIpc({ db, window: () => win, scan, player, metadata, cipher: safeStorageCipher, onKeyChanged })
+    metadata.start()
+    app.on('before-quit', () => {
+      metadata.stop()
+      metadataChanged.cancel()
+    })
 
     // reforços além da gravação a cada 5 s (o evento 'shutdown' do powerMonitor não existe no Windows):
     // notebook indo dormir e app sendo fechado com um vídeo tocando

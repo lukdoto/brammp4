@@ -33,3 +33,29 @@ Conferências que os testes automáticos não cobrem. Faça com o app instalado 
 ## Instância única
 
 20. Com o app aberto, dê dois cliques no atalho de novo. Passa se nenhuma janela nova abre e a janela existente vem para a frente.
+
+# Verificação manual do M3
+
+Conferências de metadados (TMDB) que os testes automáticos não cobrem. Precisa de uma chave do TMDB (ver README) e de pelo menos uma série com arquivos de episódio no catálogo. Faça os passos na ordem.
+
+## Chave do TMDB
+
+21. Em Configurações, cole um texto qualquer (por exemplo `abc123`) e clique em "Salvar e testar". Passa se aparece uma mensagem clara em português (formato inválido ou chave recusada pelo TMDB), nada fica salvo (a seção continua pedindo a chave) e o catálogo segue como estava, sem capas.
+22. Cole a chave válida e clique em "Salvar e testar". Passa se a tela confirma a chave configurada, nunca exibe a chave de volta, e em poucos instantes os cards do Início ganham capas e a página de um título mostra fundo, sinopse e nomes de episódios, sem precisar reiniciar o app nem revarrer.
+23. Leia o fim da tela de Configurações. Passa se o aviso "Este produto usa a API do TMDB, mas não é endossado nem certificado pelo TMDB." está visível.
+
+## Offline
+
+24. Feche o app, desligue a internet (modo avião ou cabo) e abra de novo. Passa se o catálogo abre normalmente com todas as capas e sinopses já baixadas, sem mensagem de erro nem tela bloqueante, e um episódio ainda toca.
+25. Ainda sem internet, adicione ou revarra uma pasta com um título novo. Passa se o título aparece com o nome do arquivo e a capa gerada (iniciais), sem erro; ao reabrir o app com internet, o título ganha capa e sinopse sozinho.
+
+## Correção manual e reclassificação
+
+26. Escolha uma série em que o TMDB acertou o nome, abra a página dela e clique em "Corrigir identificação". Busque um título homônimo ou outro título, escolha-o e confirme. Passa se a página passa a mostrar a capa, a sinopse e os nomes de episódios do novo título, e nenhum nome de episódio do título anterior sobrevive.
+27. Assista cerca de 1 minuto de um episódio dessa série, anote o ponto, depois revarra a biblioteca em Configurações. Passa se não aparecem itens duplicados, o "Continuar de mm:ss" é o mesmo e o título corrigido manualmente continua com a identificação escolhida e os nomes de episódios do TMDB.
+28. Coloque na biblioteca um vídeo com nome que o app não reconhece (por exemplo `video123.mkv`), revarra e abra "Não identificados". Passa se o arquivo está na lista com o motivo; ao clicar em "Reclassificar", escolher série ou filme, título e (se série) temporada e episódio, o botão mostra "Aguarde…" durante a operação (leva o tempo de uma revarredura da biblioteca) e, ao terminar, o arquivo sai da lista e aparece no catálogo no título e episódio escolhidos.
+29. Com a biblioteca desconectada, tente reclassificar um arquivo. Passa se aparece "Conecte a biblioteca para reclassificar este arquivo." e nada muda.
+
+## Remover a chave
+
+30. Em Configurações, clique em "Remover". Passa se a tela volta a pedir a chave, o catálogo continua mostrando as capas e sinopses já baixadas (agora só do cache) e "Corrigir identificação" avisa para configurar a chave em Configurações em vez de falhar.

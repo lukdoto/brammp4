@@ -3,9 +3,11 @@ import type { LibraryView, PlayerState, ScanProgress, ScanSummary } from '../../
 import { PlayPanel } from './components/PlayPanel'
 import { Home } from './pages/Home'
 import { Libraries } from './pages/Libraries'
+import { Settings } from './pages/Settings'
 import { TitlePage } from './pages/TitlePage'
+import { Unmatched } from './pages/Unmatched'
 
-type View = { name: 'home' } | { name: 'title'; id: number } | { name: 'libraries' }
+type View = { name: 'home' } | { name: 'title'; id: number } | { name: 'libraries' } | { name: 'settings' } | { name: 'unmatched' }
 
 const CLOSED_NOTICES: Partial<Record<NonNullable<PlayerState['closedReason']>, string>> = {
   disconnected: 'O disco foi desconectado durante a reprodução. O último ponto gravado foi mantido.',
@@ -21,6 +23,11 @@ export function App() {
   const [playItem, setPlayItem] = useState<string | null>(null)
   const [player, setPlayer] = useState<PlayerState>({ playing: false })
   const [notice, setNotice] = useState<string | null>(null)
+  const [unmatchedCount, setUnmatchedCount] = useState(0)
+
+  useEffect(() => {
+    void window.api.listUnmatched().then((f) => setUnmatchedCount(f.length), () => {})
+  }, [refresh])
 
   const reloadLibraries = () => void window.api.listLibraries().then(setLibraries)
   const closePanel = useCallback(() => setPlayItem(null), [])
@@ -46,6 +53,7 @@ export function App() {
         reloadLibraries()
         setRefresh((r) => r + 1)
       }),
+      window.api.onMetadataChanged(() => setRefresh((r) => r + 1)),
       window.api.onPlayerState((s) => {
         setPlayer(s)
         if (!s.playing) {
@@ -68,7 +76,11 @@ export function App() {
       <header className="top">
         <span className="logo" onClick={() => setView({ name: 'home' })}>brammp4</span>
         <span className="spacer" />
+        <button onClick={() => setView({ name: 'unmatched' })}>
+          Não identificados{unmatchedCount > 0 ? ` (${unmatchedCount})` : ''}
+        </button>
         <button onClick={() => setView({ name: 'libraries' })}>Bibliotecas</button>
+        <button onClick={() => setView({ name: 'settings' })}>Configurações</button>
       </header>
       {(player.playing || notice) && (
         <div className="banners">
@@ -86,8 +98,12 @@ export function App() {
         <Home refresh={refresh} libraries={libraries} onOpen={(id) => setView({ name: 'title', id })} onPlay={setPlayItem} />
       )}
       {view.name === 'title' && (
-        <TitlePage id={view.id} refresh={refresh} onBack={() => setView({ name: 'home' })} onPlay={setPlayItem} />
+        <TitlePage id={view.id} refresh={refresh} onBack={() => setView({ name: 'home' })} onPlay={setPlayItem} onChanged={() => setRefresh((r) => r + 1)} />
       )}
+      {view.name === 'settings' && (
+        <Settings refresh={refresh} onOpenLibraries={() => setView({ name: 'libraries' })} />
+      )}
+      {view.name === 'unmatched' && <Unmatched refresh={refresh} onChanged={() => setRefresh((r) => r + 1)} />}
       {view.name === 'libraries' && (
         <Libraries libraries={libraries} progress={progress} summaries={summaries} onChanged={reloadLibraries} />
       )}
