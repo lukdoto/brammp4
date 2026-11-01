@@ -15,7 +15,14 @@ export function codecLabel(codec?: string): string | undefined {
   return map[codec] ?? codec.toUpperCase()
 }
 
-const pad = (n: number) => String(n).padStart(2, '0')
+const IMAGE_NAME = /^w(342|780)-[A-Za-z0-9_-]+\.jpg$/
+
+/** URL do protocolo de imagens do cache; undefined se o nome não segue o padrão do cache. */
+export function imageUrl(file: string | undefined): string | undefined {
+  return file !== undefined && IMAGE_NAME.test(file) ? `brammp-img://img/${file}` : undefined
+}
+
+const pad =(n: number) => String(n).padStart(2, '0')
 
 export function itemLabel(season: number | null, episode: number | null): string {
   return season === null || episode === null ? 'Filme' : `S${pad(season)}E${pad(episode)}`

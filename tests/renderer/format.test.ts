@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel } from '../../src/renderer/src/format'
+import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl } from '../../src/renderer/src/format'
+
+describe('imageUrl', () => {
+  it('imageUrl monta a URL do protocolo', () => {
+    expect(imageUrl('w342-abc.jpg')).toBe('brammp-img://img/w342-abc.jpg')
+    expect(imageUrl('w780-A_b-9.jpg')).toBe('brammp-img://img/w780-A_b-9.jpg')
+  })
+  it('imageUrl devolve undefined para vazio, ../ e tipo errado', () => {
+    expect(imageUrl(undefined)).toBeUndefined()
+    expect(imageUrl('')).toBeUndefined()
+    expect(imageUrl('../w342-abc.jpg')).toBeUndefined()
+    expect(imageUrl('w342-a/b.jpg')).toBeUndefined()
+    expect(imageUrl('w342-a\\b.jpg')).toBeUndefined()
+    expect(imageUrl('w500-abc.jpg')).toBeUndefined()
+    expect(imageUrl('w342-abc.png')).toBeUndefined()
+    expect(imageUrl('w342-abc.jpg\n')).toBeUndefined()
+  })
+})
 
 describe('format', () => {
   it('resolução', () => {

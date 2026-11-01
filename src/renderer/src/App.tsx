@@ -46,6 +46,7 @@ export function App() {
         reloadLibraries()
         setRefresh((r) => r + 1)
       }),
+      window.api.onMetadataChanged(() => setRefresh((r) => r + 1)),
       window.api.onPlayerState((s) => {
         setPlayer(s)
         if (!s.playing) {
