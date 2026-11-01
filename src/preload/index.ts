@@ -20,7 +20,15 @@ const api: BrammApi = {
   onPlayerState: (cb) => on('player:state', cb),
   onLibraryStatus: (cb) => on('libraries:status', cb),
   onScanProgress: (cb) => on('scan:progress', cb),
-  onScanDone: (cb) => on('scan:done', cb)
+  onScanDone: (cb) => on('scan:done', cb),
+  getTmdbStatus: () => ipcRenderer.invoke('tmdb:status'),
+  setTmdbKey: (key) => ipcRenderer.invoke('tmdb:set-key', key),
+  clearTmdbKey: () => ipcRenderer.invoke('tmdb:clear-key'),
+  searchTmdb: (req) => ipcRenderer.invoke('tmdb:search', req),
+  assignTmdb: (req) => ipcRenderer.invoke('tmdb:assign', req),
+  listUnmatched: () => ipcRenderer.invoke('unmatched:list'),
+  reclassify: (req) => ipcRenderer.invoke('unmatched:reclassify', req),
+  onMetadataChanged: (cb) => on('metadata:changed', cb)
 }
 
 contextBridge.exposeInMainWorld('api', api)

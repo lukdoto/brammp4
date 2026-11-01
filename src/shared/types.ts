@@ -196,6 +196,33 @@ export interface PlayerState {
   closedReason?: PlayerClosedReason
 }
 
+export interface TmdbStatus {
+  hasKey: boolean
+  syncing: boolean
+  pending: number
+}
+
+export interface TmdbCandidate {
+  tmdbId: number
+  name: string
+  year?: number
+  overview?: string
+}
+
+export type SetKeyResult = { ok: true } | { ok: false; error: 'invalid' | 'invalid-key' | 'network' | 'encryption-unavailable' }
+
+export type AssignResult =
+  | { ok: true }
+  | { ok: false; error: 'invalid' | 'no-key' | 'network' | 'rate-limit' | 'invalid-key' | 'bad-response' | 'not-found' | 'kind-mismatch' }
+
+export interface UnmatchedFile {
+  libraryId: string
+  libraryLabel: string
+  relPath: string
+}
+
+export type ReclassifyResult = { ok: true } | { ok: false; error: 'invalid' | 'offline' }
+
 export interface BrammApi {
   listLibraries(): Promise<LibraryView[]>
   addLibrary(label: string): Promise<LibraryView | null>
@@ -210,4 +237,12 @@ export interface BrammApi {
   onLibraryStatus(cb: (lib: LibraryView) => void): () => void
   onScanProgress(cb: (p: ScanProgress) => void): () => void
   onScanDone(cb: (s: ScanSummary) => void): () => void
+  getTmdbStatus(): Promise<TmdbStatus>
+  setTmdbKey(key: string): Promise<SetKeyResult>
+  clearTmdbKey(): Promise<void>
+  searchTmdb(req: { kind: 'series' | 'movie'; query: string; year?: number }): Promise<TmdbCandidate[]>
+  assignTmdb(req: { titleId: number; tmdbId: number }): Promise<AssignResult>
+  listUnmatched(): Promise<UnmatchedFile[]>
+  reclassify(req: { libraryId: string; relPath: string; target: ReclassifyTarget }): Promise<ReclassifyResult>
+  onMetadataChanged(cb: () => void): () => void
 }
