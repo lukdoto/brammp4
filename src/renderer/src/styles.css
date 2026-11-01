@@ -73,4 +73,9 @@ main { padding: 0 48px 48px; }
 .candidate { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid #333; }
 .candidate .info { flex: 1; min-width: 0; }
 .candidate button { flex: none; }
+.unmatched-row { align-items: flex-start; }
+.unmatched-row .body > div:first-child { overflow-wrap: anywhere; }
+.unmatched-row .add { flex-wrap: wrap; margin: 10px 0 0; }
+.unmatched-row input.narrow { width: 120px; }
+.unmatched-row select { font: inherit; padding: 8px 10px; border-radius: 4px; border: 1px solid #444; background: #000; color: var(--text); }
 .attribution { margin-top: 32px; font-size: 12px; color: var(--muted); }

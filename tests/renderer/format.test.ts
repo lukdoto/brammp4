@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError } from '../../src/renderer/src/format'
+import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError, reclassifyError, parseEpisodeInput } from '../../src/renderer/src/format'
 
 describe('imageUrl', () => {
   it('imageUrl monta a URL do protocolo', () => {
@@ -82,6 +82,24 @@ describe('relógio e progresso', () => {
     expect(audioLabel({ typeIndex: 2, codec: 'aac', title: 'Dublado', isDefault: false })).toBe('Idioma desconhecido · Dublado · AAC')
     expect(subLabel({ source: 'external', externalPath: 'a.srt', lang: 'por', codec: 'srt', isDefault: false, isForced: false, isSdh: false })).toBe('Português (arquivo)')
     expect(subLabel({ source: 'embedded', typeIndex: 1, lang: 'eng', codec: 'subrip', isDefault: false, isForced: true, isSdh: true })).toBe('Inglês (forçada) (SDH)')
+  })
+})
+
+describe('tela Não identificados', () => {
+  it('parseEpisodeInput aceita "1" "5" e rejeita vazio, negativo, decimal, texto', () => {
+    expect(parseEpisodeInput('1', '5')).toEqual({ season: 1, episode: 5 })
+    expect(parseEpisodeInput(' 0 ', ' 12 ')).toEqual({ season: 0, episode: 12 })
+    expect(parseEpisodeInput('200', '9999')).toEqual({ season: 200, episode: 9999 })
+    for (const [s, e] of [['', '5'], ['1', ''], ['-1', '5'], ['1', '-5'], ['1.5', '2'], ['1', '2.5'], ['a', '2'], ['1', 'x'], ['201', '1'], ['1', '0'], ['1', '10000'], ['1e1', '2']]) {
+      expect(parseEpisodeInput(s, e)).toBeNull()
+    }
+  })
+  it('reclassifyError tem texto para os dois códigos', () => {
+    for (const c of ['invalid', 'offline'] as const) {
+      expect(reclassifyError(c).length).toBeGreaterThan(0)
+      expect(reclassifyError(c)).not.toContain('undefined')
+    }
+    expect(reclassifyError('offline')).toContain('Conecte')
   })
 })
 

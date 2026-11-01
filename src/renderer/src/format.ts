@@ -1,4 +1,4 @@
-import type { AssignResult, AudioOption, ItemView, ProgressView, SetKeyResult, SubOption } from '../../shared/types'
+import type { AssignResult, AudioOption, ItemView, ProgressView, ReclassifyResult, SetKeyResult, SubOption } from '../../shared/types'
 
 export function resolutionLabel(height?: number): string | undefined {
   if (!height) return undefined
@@ -83,6 +83,23 @@ export function tmdbKeyError(e: Exclude<SetKeyResult, { ok: true }>['error']): s
     case 'network': return 'Não foi possível falar com o TMDB. Verifique a conexão com a internet e tente de novo.'
     case 'encryption-unavailable': return 'Este computador não oferece armazenamento seguro para a chave, então ela não foi salva.'
   }
+}
+
+export function reclassifyError(e: Exclude<ReclassifyResult, { ok: true }>['error']): string {
+  switch (e) {
+    case 'invalid': return 'Dados inválidos. Confira os campos e tente de novo.'
+    case 'offline': return 'Conecte a biblioteca para reclassificar este arquivo.'
+  }
+}
+
+/** Temporada (0 a 200) e episódio (1 a 9999) como inteiros; null se algum campo for inválido. */
+export function parseEpisodeInput(season: string, episode: string): { season: number; episode: number } | null {
+  const s = season.trim()
+  const e = episode.trim()
+  if (!/^\d{1,3}$/.test(s) || !/^\d{1,4}$/.test(e)) return null
+  const sn = Number(s)
+  const en = Number(e)
+  return sn <= 200 && en >= 1 ? { season: sn, episode: en } : null
 }
 
 export function assignError(e: Exclude<AssignResult, { ok: true }>['error']): string {
