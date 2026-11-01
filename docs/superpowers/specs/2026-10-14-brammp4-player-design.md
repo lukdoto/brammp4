@@ -218,6 +218,8 @@ Regras:
 
 Desvios decididos no M3 (plano `docs/superpowers/plans/2026-10-16-m3-metadados-tmdb.md`):
 
+1. **Chave local permanente.** `items.key` continua `local:<nome-normalizado>:SxxExx` depois do vínculo com o TMDB;
+   detalhes na nota (M3) da seção 5 (Modelo de dados).
 2. **Sem frame de vídeo como capa offline.** Só o ffprobe é embutido, não o ffmpeg; a capa sem TMDB é o placeholder
    gerado (iniciais + cor por nome). Títulos não identificados ficam sem imagem real.
 3. **Logo do TMDB só no M5.** No M3 entra apenas o texto de atribuição obrigatório, na tela Configurações; o logo
@@ -225,8 +227,6 @@ Desvios decididos no M3 (plano `docs/superpowers/plans/2026-10-16-m3-metadados-t
 4. **Idioma fixo `pt-BR`** nas consultas; sinopse vazia continua vazia (sem segunda consulta em inglês).
 5. **Candidatos da correção manual sem pôster** (nome, ano e trecho da sinopse): mostrar imagens remotas exigiria
    afrouxar a CSP. Homônimos se distinguem pelo ano e pela sinopse.
-
-(O desvio 1 é a nota de identidade da seção 5.)
 
 ## 10. Backup no Google Drive
 
