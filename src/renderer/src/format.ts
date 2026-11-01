@@ -1,4 +1,4 @@
-import type { AudioOption, ItemView, ProgressView, SubOption } from '../../shared/types'
+import type { AssignResult, AudioOption, ItemView, ProgressView, SetKeyResult, SubOption } from '../../shared/types'
 
 export function resolutionLabel(height?: number): string | undefined {
   if (!height) return undefined
@@ -74,4 +74,26 @@ export function audioLabel(a: AudioOption): string {
 
 export function subLabel(s: SubOption): string {
   return `${langName(s.lang) ?? 'Idioma desconhecido'}${s.isForced ? ' (forçada)' : ''}${s.isSdh ? ' (SDH)' : ''}${s.source === 'external' ? ' (arquivo)' : ''}`
+}
+
+export function tmdbKeyError(e: Exclude<SetKeyResult, { ok: true }>['error']): string {
+  switch (e) {
+    case 'invalid': return 'A chave informada não tem um formato válido. Copie a chave de API (v3) completa.'
+    case 'invalid-key': return 'O TMDB não aceitou essa chave. Confira se copiou a chave de API inteira.'
+    case 'network': return 'Não foi possível falar com o TMDB. Verifique a conexão com a internet e tente de novo.'
+    case 'encryption-unavailable': return 'Este computador não oferece armazenamento seguro para a chave, então ela não foi salva.'
+  }
+}
+
+export function assignError(e: Exclude<AssignResult, { ok: true }>['error']): string {
+  switch (e) {
+    case 'invalid': return 'Seleção inválida. Feche a janela e tente de novo.'
+    case 'no-key': return 'Configure a chave do TMDB em Configurações antes de corrigir a identificação.'
+    case 'network': return 'Não foi possível falar com o TMDB. Verifique a conexão com a internet e tente de novo.'
+    case 'rate-limit': return 'O TMDB limitou as consultas por agora. Aguarde um instante e tente de novo.'
+    case 'invalid-key': return 'O TMDB recusou a chave configurada. Atualize a chave em Configurações.'
+    case 'bad-response': return 'O TMDB respondeu de um jeito inesperado. Tente de novo mais tarde.'
+    case 'not-found': return 'Esse título não foi encontrado no TMDB. Escolha outro resultado.'
+    case 'kind-mismatch': return 'Esse resultado é de outro tipo (filme no lugar de série, ou o contrário). Escolha outro.'
+  }
 }

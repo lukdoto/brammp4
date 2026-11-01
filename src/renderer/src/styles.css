@@ -70,3 +70,7 @@ main { padding: 0 48px 48px; }
 .banner.warn { cursor: pointer; }
 .card.wide { flex-basis: 240px; }
 .card .pbar { max-width: none; }
+.candidate { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid #333; }
+.candidate .info { flex: 1; min-width: 0; }
+.candidate button { flex: none; }
+.attribution { margin-top: 32px; font-size: 12px; color: var(--muted); }

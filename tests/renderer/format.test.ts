@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl } from '../../src/renderer/src/format'
+import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError } from '../../src/renderer/src/format'
 
 describe('imageUrl', () => {
   it('imageUrl monta a URL do protocolo', () => {
@@ -82,5 +82,20 @@ describe('relógio e progresso', () => {
     expect(audioLabel({ typeIndex: 2, codec: 'aac', title: 'Dublado', isDefault: false })).toBe('Idioma desconhecido · Dublado · AAC')
     expect(subLabel({ source: 'external', externalPath: 'a.srt', lang: 'por', codec: 'srt', isDefault: false, isForced: false, isSdh: false })).toBe('Português (arquivo)')
     expect(subLabel({ source: 'embedded', typeIndex: 1, lang: 'eng', codec: 'subrip', isDefault: false, isForced: true, isSdh: true })).toBe('Inglês (forçada) (SDH)')
+  })
+})
+
+describe('mensagens de erro do TMDB', () => {
+  const keyCodes = ['invalid', 'invalid-key', 'network', 'encryption-unavailable'] as const
+  const assignCodes = ['invalid', 'no-key', 'network', 'rate-limit', 'invalid-key', 'bad-response', 'not-found', 'kind-mismatch'] as const
+  it('tmdbKeyError cobre todos os códigos com texto não vazio', () => {
+    for (const c of keyCodes) expect(tmdbKeyError(c).length).toBeGreaterThan(0)
+  })
+  it('assignError cobre todos os códigos com texto não vazio', () => {
+    for (const c of assignCodes) expect(assignError(c).length).toBeGreaterThan(0)
+  })
+  it('nenhuma mensagem contém a palavra "undefined"', () => {
+    for (const c of keyCodes) expect(tmdbKeyError(c)).not.toContain('undefined')
+    for (const c of assignCodes) expect(assignError(c)).not.toContain('undefined')
   })
 })

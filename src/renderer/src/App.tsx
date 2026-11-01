@@ -3,9 +3,10 @@ import type { LibraryView, PlayerState, ScanProgress, ScanSummary } from '../../
 import { PlayPanel } from './components/PlayPanel'
 import { Home } from './pages/Home'
 import { Libraries } from './pages/Libraries'
+import { Settings } from './pages/Settings'
 import { TitlePage } from './pages/TitlePage'
 
-type View = { name: 'home' } | { name: 'title'; id: number } | { name: 'libraries' }
+type View = { name: 'home' } | { name: 'title'; id: number } | { name: 'libraries' } | { name: 'settings' }
 
 const CLOSED_NOTICES: Partial<Record<NonNullable<PlayerState['closedReason']>, string>> = {
   disconnected: 'O disco foi desconectado durante a reprodução. O último ponto gravado foi mantido.',
@@ -70,6 +71,7 @@ export function App() {
         <span className="logo" onClick={() => setView({ name: 'home' })}>brammp4</span>
         <span className="spacer" />
         <button onClick={() => setView({ name: 'libraries' })}>Bibliotecas</button>
+        <button onClick={() => setView({ name: 'settings' })}>Configurações</button>
       </header>
       {(player.playing || notice) && (
         <div className="banners">
@@ -87,7 +89,10 @@ export function App() {
         <Home refresh={refresh} libraries={libraries} onOpen={(id) => setView({ name: 'title', id })} onPlay={setPlayItem} />
       )}
       {view.name === 'title' && (
-        <TitlePage id={view.id} refresh={refresh} onBack={() => setView({ name: 'home' })} onPlay={setPlayItem} />
+        <TitlePage id={view.id} refresh={refresh} onBack={() => setView({ name: 'home' })} onPlay={setPlayItem} onChanged={() => setRefresh((r) => r + 1)} />
+      )}
+      {view.name === 'settings' && (
+        <Settings refresh={refresh} onOpenLibraries={() => setView({ name: 'libraries' })} />
       )}
       {view.name === 'libraries' && (
         <Libraries libraries={libraries} progress={progress} summaries={summaries} onChanged={reloadLibraries} />

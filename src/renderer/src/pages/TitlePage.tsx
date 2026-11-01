@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FileView, TitleDetail } from '../../../shared/types'
 import { resumeStart } from '../../../shared/rules'
+import { MatchDialog } from '../components/MatchDialog'
 import { ProgressBar } from '../components/ProgressBar'
 import { codecLabel, imageUrl, itemLabel, minutesLabel, progressRatio, resolutionLabel, seasonsOf } from '../format'
 
@@ -24,8 +25,9 @@ function Backdrop({ file }: { file?: string }) {
   return <img className="backdrop" src={url} alt="" onError={() => setFailed(true)} />
 }
 
-export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh: number; onBack: () => void; onPlay: (itemKey: string) => void }) {
+export function TitlePage({ id, refresh, onBack, onPlay, onChanged }: { id: number; refresh: number; onBack: () => void; onPlay: (itemKey: string) => void; onChanged: () => void }) {
   const [detail, setDetail] = useState<TitleDetail | null>(null)
+  const [matching, setMatching] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [season, setSeason] = useState<number | null>(null)
   useEffect(() => {
@@ -68,6 +70,7 @@ export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh
             {detail.matchSource === 'manual' && <span className="badge manual">Identificado manualmente</span>}
           </div>
           {detail.overview && <p className="overview">{detail.overview}</p>}
+          <button onClick={() => setMatching(true)}>Corrigir identificação</button>
         </div>
       </div>
       {detail.kind === 'series' && (
@@ -105,6 +108,15 @@ export function TitlePage({ id, refresh, onBack, onPlay }: { id: number; refresh
           </div>
         )
       })}
+      {matching && (
+        <MatchDialog
+          titleId={detail.id}
+          kind={detail.kind}
+          initialQuery={detail.name}
+          onClose={() => setMatching(false)}
+          onAssigned={onChanged}
+        />
+      )}
     </main>
   )
 }
