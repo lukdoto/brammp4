@@ -48,14 +48,15 @@ export interface TitleMatch {
   source: 'auto' | 'manual'
 }
 
-export function applyTitleMatch(db: Db, titleId: number, m: TitleMatch): void {
-  tx(db, () => {
+/** true se gravou; false se o título sumiu ou o automático foi barrado por um vínculo manual. */
+export function applyTitleMatch(db: Db, titleId: number, m: TitleMatch): boolean {
+  return tx(db, () => {
     const cur = db.prepare('SELECT tmdb_id, match_source FROM titles WHERE id = ?').get(titleId) as
       | { tmdb_id: number | null; match_source: string | null }
       | undefined
-    if (!cur) return
+    if (!cur) return false
     // Review Focus 3: o automático nunca mexe num vínculo manual.
-    if (m.source === 'auto' && cur.match_source === 'manual') return
+    if (m.source === 'auto' && cur.match_source === 'manual') return false
     const changed = cur.tmdb_id !== m.tmdbId
     const matchedAt = new Date().toISOString()
     if (changed) {
@@ -72,11 +73,12 @@ export function applyTitleMatch(db: Db, titleId: number, m: TitleMatch): void {
            match_source = ?, matched_at = ?, tmdb_checked_at = NULL WHERE id = ?`
       ).run(m.name, m.year ?? null, m.overview ?? null, m.posterFile ?? null, m.backdropFile ?? null, m.source, matchedAt, titleId)
     }
+    return true
   })
 }
 
 export function markChecked(db: Db, titleId: number, nowIso: string): void {
-  db.prepare('UPDATE titles SET tmdb_checked_at = ? WHERE id = ?').run(nowIso, titleId)
+  db.prepare('UPDATE titles SET tmdb_checked_at = ? WHERE id = ? AND tmdb_id IS NULL').run(nowIso, titleId)
 }
 
 export function listSeasonsNeedingEpisodes(db: Db, titleId: number): number[] {
@@ -88,18 +90,26 @@ export function listSeasonsNeedingEpisodes(db: Db, titleId: number): number[] {
   return rows.map((r) => r.season)
 }
 
+/**
+ * Só grava se o título ainda estiver vinculado a `expectedTmdbId` (o vínculo pode ter mudado
+ * durante a consulta ao TMDB). Devolve false quando descartou os episódios.
+ */
 export function applyEpisodes(
   db: Db,
   titleId: number,
   season: number,
-  eps: { episode: number; name?: string; overview?: string }[]
-): void {
+  eps: { episode: number; name?: string; overview?: string }[],
+  expectedTmdbId: number
+): boolean {
   const upd = db.prepare(
     `UPDATE items SET tmdb_name = COALESCE(?, tmdb_name), overview = COALESCE(?, overview)
      WHERE title_id = ? AND season = ? AND episode = ?`
   )
-  tx(db, () => {
+  return tx(db, () => {
+    const t = db.prepare('SELECT tmdb_id FROM titles WHERE id = ?').get(titleId) as { tmdb_id: number | null } | undefined
+    if (!t || t.tmdb_id !== expectedTmdbId) return false
     for (const e of eps) upd.run(e.name ?? null, e.overview ?? null, titleId, season, e.episode)
+    return true
   })
 }
 

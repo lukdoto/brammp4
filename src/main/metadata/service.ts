@@ -204,7 +204,7 @@ export class MetadataService {
       }
       const posterFile = best.posterPath ? await this.images.ensure('w342', best.posterPath) : undefined
       const backdropFile = best.backdropPath ? await this.images.ensure('w780', best.backdropPath) : undefined
-      meta.applyTitleMatch(this.db, t.id, {
+      const applied = meta.applyTitleMatch(this.db, t.id, {
         tmdbId: best.id,
         name: best.name,
         year: best.year,
@@ -214,6 +214,7 @@ export class MetadataService {
         source: 'auto'
       })
       this.triedImages.add(t.id)
+      if (!applied) continue // virou manual no meio da rodada: não é mais da conta do automático
       this.onChange()
       if (t.kind === 'series') await this.guard(() => this.fillEpisodes(t.id, best.id))
     }
@@ -257,8 +258,8 @@ export class MetadataService {
       this.triedSeasons.add(key)
       try {
         const eps = await client.season(tmdbId, season)
-        meta.applyEpisodes(this.db, titleId, season, eps)
-        changed = true
+        // descarta se o vínculo mudou enquanto season() estava em andamento
+        if (meta.applyEpisodes(this.db, titleId, season, eps, tmdbId)) changed = true
       } catch (e) {
         if (e instanceof TmdbError && e.code === 'bad-response') continue // temporada que o TMDB não conhece
         this.triedSeasons.delete(key) // falha transitória: a próxima rodada tenta de novo

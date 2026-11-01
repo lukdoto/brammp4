@@ -66,7 +66,7 @@ describe('sync', () => {
     await svc.sync()
     expect(client.search).toHaveBeenCalledWith('movie', 'Dune', 2021)
     expect(titleRow(db, dune.titleId)).toMatchObject({ tmdb_id: 438631, name: 'Duna', poster_cache: null })
-    expect(client.season).toHaveBeenCalledTimes(1) // só a série "Dark" (resultado do search falso)
+    expect(client.season).toHaveBeenCalledTimes(1) // só a série "Dark": o fakeClient devolve o mesmo resultado de search para a série e para o filme, e temporadas só existem para séries
   })
 
   it('sem chave (client() null): não faz nada e status.hasKey false', async () => {
@@ -286,6 +286,83 @@ describe('assign', () => {
     const { svc } = make(db, fakeClient({ season: vi.fn().mockRejectedValue(new TmdbError('network')) }))
     expect(await svc.assign(titleId, 70523)).toBe('ok')
     expect(titleRow(db, titleId).tmdb_id).toBe(70523)
+  })
+})
+
+describe('corrida assign x sync', () => {
+  const manual: TmdbTitle = { id: 999, name: 'Outra', year: 2020 }
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void
+    const promise = new Promise<T>((r) => { resolve = r })
+    return { promise, resolve }
+  }
+  const seasonFor = vi.fn(async (id: number, season: number) =>
+    id === 999 ? [{ season, episode: 1, name: 'Piloto', overview: 'manual' }] : [{ season, episode: 1, name: 'Errado' }, { season, episode: 2, name: 'Errado2', overview: 'errado' }]
+  )
+
+  it('assign durante o search do sync: episódios e vínculo ficam do id manual', async () => {
+    const { db, titleId } = seedSeries()
+    const gate = deferred<TmdbTitle[]>()
+    const client = fakeClient({ search: vi.fn(() => gate.promise), details: vi.fn(async () => manual), season: seasonFor })
+    const { svc } = make(db, client)
+    const syncing = svc.sync()
+    await vi.waitFor(() => expect(client.search).toHaveBeenCalled())
+    expect(await svc.assign(titleId, 999)).toBe('ok')
+    gate.resolve([dark])
+    await syncing
+    expect(titleRow(db, titleId)).toMatchObject({ tmdb_id: 999, match_source: 'manual', name: 'Outra' })
+    expect(client.season).not.toHaveBeenCalledWith(70523, expect.anything())
+    expect(db.prepare(`SELECT tmdb_name, overview FROM items WHERE key = 'local:dark:S01E01'`).get()).toMatchObject({ tmdb_name: 'Piloto', overview: 'manual' })
+    expect(db.prepare(`SELECT tmdb_name, overview FROM items WHERE key = 'local:dark:S01E02'`).get()).toMatchObject({ tmdb_name: null, overview: null })
+  })
+
+  it('assign durante o download de imagem do sync: o automático não grava nada', async () => {
+    const { db, titleId } = seedSeries()
+    const gate = deferred<string | undefined>()
+    const images = fakeImages()
+    images.ensure.mockImplementationOnce(() => gate.promise)
+    const client = fakeClient({ details: vi.fn(async () => manual), season: seasonFor })
+    const { svc } = make(db, client, images)
+    const syncing = svc.sync()
+    await vi.waitFor(() => expect(images.ensure).toHaveBeenCalled())
+    expect(await svc.assign(titleId, 999)).toBe('ok')
+    gate.resolve('w342-p.jpg')
+    await syncing
+    expect(titleRow(db, titleId)).toMatchObject({ tmdb_id: 999, match_source: 'manual', name: 'Outra' })
+    expect(client.season).not.toHaveBeenCalledWith(70523, expect.anything())
+    expect(db.prepare(`SELECT tmdb_name FROM items WHERE key = 'local:dark:S01E02'`).get()).toMatchObject({ tmdb_name: null })
+  })
+
+  it('troca de vínculo no meio de um season(): episódios do id antigo são descartados', async () => {
+    const { db, titleId } = seedSeries()
+    const gate = deferred<{ season: number; episode: number; name?: string; overview?: string }[]>()
+    const season = vi.fn((id: number, s: number) => (id === 70523 ? gate.promise : seasonFor(id, s)))
+    const client = fakeClient({ details: vi.fn(async () => manual), season })
+    const { svc } = make(db, client)
+    const syncing = svc.sync()
+    await vi.waitFor(() => expect(season).toHaveBeenCalledWith(70523, 1))
+    expect(await svc.assign(titleId, 999)).toBe('ok')
+    gate.resolve([{ season: 1, episode: 1, name: 'Errado' }, { season: 1, episode: 2, name: 'Errado2', overview: 'errado' }])
+    await syncing
+    expect(titleRow(db, titleId)).toMatchObject({ tmdb_id: 999, match_source: 'manual' })
+    expect(db.prepare(`SELECT tmdb_name, overview FROM items WHERE key = 'local:dark:S01E01'`).get()).toMatchObject({ tmdb_name: 'Piloto', overview: 'manual' })
+    expect(db.prepare(`SELECT tmdb_name, overview FROM items WHERE key = 'local:dark:S01E02'`).get()).toMatchObject({ tmdb_name: null, overview: null })
+  })
+
+  it('troca de vínculo no meio de um season() de série já vinculada (syncLinkedSeries)', async () => {
+    const { db, titleId } = seedSeries()
+    meta.applyTitleMatch(db, titleId, { tmdbId: 70523, name: 'Dark', posterFile: 'w342-p.jpg', backdropFile: 'w780-b.jpg', source: 'auto' })
+    const gate = deferred<{ season: number; episode: number; name?: string }[]>()
+    const season = vi.fn((id: number, s: number) => (id === 70523 ? gate.promise : seasonFor(id, s)))
+    const client = fakeClient({ details: vi.fn(async () => manual), season })
+    const { svc } = make(db, client)
+    const syncing = svc.sync()
+    await vi.waitFor(() => expect(season).toHaveBeenCalledWith(70523, 1))
+    expect(await svc.assign(titleId, 999)).toBe('ok')
+    gate.resolve([{ season: 1, episode: 2, name: 'Errado2' }])
+    await syncing
+    expect(db.prepare(`SELECT tmdb_name FROM items WHERE key = 'local:dark:S01E02'`).get()).toMatchObject({ tmdb_name: null })
+    expect(db.prepare(`SELECT tmdb_name FROM items WHERE key = 'local:dark:S01E01'`).get()).toMatchObject({ tmdb_name: 'Piloto' })
   })
 })
 
