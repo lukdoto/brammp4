@@ -4,7 +4,12 @@ import { parseEpisodeInput, parseYearInput, reclassifyError } from '../format'
 
 const SERIES_LIST_ID = 'unmatched-series'
 
-function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => void }) {
+/** Nome mostrado (minúsculo, aparado) -> id da série; null quando o nome se repete (ambíguo). */
+type SeriesIndex = Map<string, number | null>
+
+const nameKey = (s: string) => s.trim().toLocaleLowerCase()
+
+function Row({ file, series: seriesIndex, onDone }: { file: UnmatchedFile; series: SeriesIndex; onDone: () => void }) {
   const [kind, setKind] = useState<'movie' | 'episode'>('movie')
   const [title, setTitle] = useState('')
   const [year, setYear] = useState('')
@@ -16,6 +21,7 @@ function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => void }) {
 
   async function submit() {
     let target: ReclassifyTarget
+    let titleId: number | undefined
     if (kind === 'movie') {
       const y = parseYearInput(year)
       if (!title.trim() || !y.ok) return setError('Informe o título e, se quiser, um ano entre 1870 e 2200.')
@@ -24,11 +30,18 @@ function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => void }) {
       const se = parseEpisodeInput(season, episode)
       if (!series.trim() || !se) return setError('Informe a série, a temporada (0 a 200) e o episódio (1 a 9999).')
       target = { kind: 'episode', series: series.trim(), ...se }
+      // série da lista: o main reaproveita o título mesmo que o nome mostrado seja o do TMDB
+      titleId = seriesIndex.get(nameKey(series)) ?? undefined
     }
     setBusy(true)
     setError(null)
     try {
-      const r = await window.api.reclassify({ libraryId: file.libraryId, relPath: file.relPath, target })
+      const r = await window.api.reclassify({
+        libraryId: file.libraryId,
+        relPath: file.relPath,
+        target,
+        ...(titleId !== undefined ? { titleId } : {})
+      })
       if (r.ok) onDone() // a página recarrega a lista; se o arquivo continuar aqui, a linha fica livre
       else setError(r.error === 'offline' ? `${reclassifyError(r.error)} (${file.libraryLabel})` : reclassifyError(r.error))
     } catch {
@@ -80,6 +93,7 @@ function Row({ file, onDone }: { file: UnmatchedFile; onDone: () => void }) {
 export function Unmatched({ refresh, onChanged }: { refresh: number; onChanged: () => void }) {
   const [files, setFiles] = useState<UnmatchedFile[] | null>(null)
   const [seriesNames, setSeriesNames] = useState<string[]>([])
+  const [seriesIndex, setSeriesIndex] = useState<SeriesIndex>(new Map())
   const [failed, setFailed] = useState(false)
 
   const reload = () =>
@@ -94,7 +108,15 @@ export function Unmatched({ refresh, onChanged }: { refresh: number; onChanged: 
   useEffect(() => {
     void reload()
     void window.api.getCatalog().then(
-      (c) => setSeriesNames([...new Set(c.series.map((s) => s.name))].sort((a, b) => a.localeCompare(b))),
+      (c) => {
+        const index: SeriesIndex = new Map()
+        for (const s of c.series) {
+          const k = nameKey(s.name)
+          index.set(k, index.has(k) ? null : s.id)
+        }
+        setSeriesIndex(index)
+        setSeriesNames([...new Set(c.series.map((s) => s.name))].sort((a, b) => a.localeCompare(b)))
+      },
       () => {}
     )
   }, [refresh])
@@ -111,7 +133,7 @@ export function Unmatched({ refresh, onChanged }: { refresh: number; onChanged: 
       {failed && <p className="error">Não foi possível carregar a lista.</p>}
       {files && files.length === 0 && <p>Nenhum arquivo para identificar.</p>}
       {files?.map((f) => (
-        <Row key={`${f.libraryId}\u0000${f.relPath}`} file={f} onDone={onChanged} />
+        <Row key={`${f.libraryId}\u0000${f.relPath}`} file={f} series={seriesIndex} onDone={onChanged} />
       ))}
     </main>
   )

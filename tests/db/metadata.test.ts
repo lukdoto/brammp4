@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import * as meta from '../../src/main/db/metadata'
 import * as repo from '../../src/main/db/repo'
 import * as progress from '../../src/main/db/progress'
+import { getPlayOptions } from '../../src/main/player/options'
 import { seedMovie, seedSeries } from '../helpers/seed'
 
 const NOW = '2026-10-16T12:00:00.000Z'
@@ -163,6 +164,20 @@ describe('guardas de corrida', () => {
   })
 })
 
+describe('nomes do TMDB nas outras telas', () => {
+  it('continuar assistindo e opções de reprodução mostram o nome do episódio do TMDB (e a capa)', () => {
+    const { db, titleId, keys } = seedSeries()
+    meta.applyTitleMatch(db, titleId, { tmdbId: 70523, name: 'Dark', posterFile: 'w342-p.jpg', source: 'auto' })
+    meta.applyEpisodes(db, titleId, 1, [{ episode: 1, name: 'Segredos' }, { episode: 2, name: 'Mentiras' }], 70523)
+    progress.saveProgress(db, { itemKey: keys[0]!, positionS: 100, watched: false })
+    expect(progress.listContinueWatching(db)[0]).toMatchObject({ itemKey: keys[0], episodeName: 'Segredos', posterFile: 'w342-p.jpg' })
+    progress.saveProgress(db, { itemKey: keys[0]!, positionS: 1380, watched: true })
+    expect(progress.listContinueWatching(db)[0]).toMatchObject({ itemKey: keys[1], episodeName: 'Mentiras' })
+    expect(getPlayOptions(db, keys[1]!)).toMatchObject({ episodeName: 'Mentiras' })
+    expect(getPlayOptions(db, keys[2]!)).not.toHaveProperty('episodeName')
+  })
+})
+
 describe('listMissingImages / applyTitleImages', () => {
   it('lista vinculados sem pôster ou sem fundo e preenche sem mexer no vínculo', () => {
     const { db, titleId } = seedSeries()
@@ -172,6 +187,16 @@ describe('listMissingImages / applyTitleImages', () => {
     meta.applyTitleImages(db, titleId, { posterFile: 'w342-a.jpg', backdropFile: 'w780-a.jpg' })
     expect(meta.listMissingImages(db)).toEqual([])
     expect(meta.getTitleForAssign(db, titleId)).toMatchObject({ tmdbId: 5, matchSource: 'manual' })
+  })
+
+  it('clearMissingImageFiles esquece só o arquivo que sumiu e o título volta para listMissingImages', () => {
+    const { db, titleId } = seedSeries()
+    meta.applyTitleMatch(db, titleId, { tmdbId: 5, name: 'Dark', posterFile: 'w342-a.jpg', backdropFile: 'w780-a.jpg', source: 'auto' })
+    expect(meta.clearMissingImageFiles(db, () => true)).toEqual([])
+    expect(meta.listMissingImages(db)).toEqual([])
+    expect(meta.clearMissingImageFiles(db, (f) => f !== 'w342-a.jpg')).toEqual([titleId])
+    expect(db.prepare('SELECT poster_cache, backdrop_cache FROM titles WHERE id = ?').get(titleId)).toMatchObject({ poster_cache: null, backdrop_cache: 'w780-a.jpg' })
+    expect(meta.listMissingImages(db)).toEqual([{ id: titleId, kind: 'series', tmdbId: 5 }])
   })
 
   it('listLinkedSeries devolve só séries vinculadas com arquivo disponível', () => {

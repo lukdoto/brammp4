@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ScanSummary } from '../shared/types'
 import { openDatabase } from './db/database'
+import { debounce } from './debounce'
 import * as repo from './db/repo'
 import { registerIpc } from './ipc'
 import { LibraryMonitor } from './libraries/monitor'
@@ -78,19 +79,15 @@ function main(): void {
     })
 
     const keyring = createKeyring(db, safeStorageCipher, (key) => createTmdbClient({ key }))
-    let changedTimer: ReturnType<typeof setTimeout> | null = null
+    // 500 ms depois da última mudança, mas no máximo a cada 2 s durante rodadas longas
+    const metadataChanged = debounce(() => send('metadata:changed', null), 500, 2000)
     const metadata = new MetadataService({
       db,
       client: () => keyring.client(),
       images: createImageCache({ dir: imagesDir() }),
       now: () => new Date(),
-      onChange: () => {
-        if (changedTimer) clearTimeout(changedTimer)
-        changedTimer = setTimeout(() => {
-          changedTimer = null
-          send('metadata:changed', null)
-        }, 500)
-      }
+      onChange: () => metadataChanged.call(),
+      imageExists: (file) => existsSync(join(imagesDir(), file))
     })
     const syncMetadata = () => metadata.sync().catch((err) => console.error('[metadata] sync falhou', err instanceof Error ? err.name : 'erro'))
 
@@ -136,11 +133,15 @@ function main(): void {
       }
     })
 
-    registerIpc({ db, window: () => win, scan, player, metadata, cipher: safeStorageCipher, onKeyChanged: () => keyring.invalidate() })
+    const onKeyChanged = () => {
+      keyring.invalidate()
+      metadata.keyChanged()
+    }
+    registerIpc({ db, window: () => win, scan, player, metadata, cipher: safeStorageCipher, onKeyChanged })
     metadata.start()
     app.on('before-quit', () => {
       metadata.stop()
-      if (changedTimer) clearTimeout(changedTimer)
+      metadataChanged.cancel()
     })
 
     // reforços além da gravação a cada 5 s (o evento 'shutdown' do powerMonitor não existe no Windows):

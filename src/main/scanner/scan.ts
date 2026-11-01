@@ -50,7 +50,7 @@ export async function scanLibrary(lib: { id: string; rootPath: string }, deps: S
     return { ...v, parsed: manual ? meta.reclassifyToParsed(manual) : parseVideoPath(v.relPath) }
   })
   const recognized = parsed.filter((v) => v.parsed !== null)
-  const unmatchedVideos = parsed.filter((v) => v.parsed === null).map((v) => ({ relPath: v.relPath, reason: 'nome não reconhecido' }))
+  const unmatchedVideos = parsed.filter((v) => v.parsed === null).map((v) => ({ relPath: v.relPath, reason: meta.UNMATCHED_REASON }))
 
   // undefined = reaproveitar leitura anterior; null = ffprobe falhou
   const probes = new Map<string, ProbeResult | null | undefined>()

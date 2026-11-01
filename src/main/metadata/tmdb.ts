@@ -58,10 +58,11 @@ function yearOf(v: unknown): number | undefined {
   return m ? Number(m[1]) : undefined
 }
 
-function toTitle(raw: unknown, kind: 'series' | 'movie'): TmdbTitle {
-  if (!isObj(raw) || typeof raw.id !== 'number') throw new TmdbError('bad-response')
+/** undefined quando o item não tem id numérico ou nome. */
+function maybeTitle(raw: unknown, kind: 'series' | 'movie'): TmdbTitle | undefined {
+  if (!isObj(raw) || typeof raw.id !== 'number' || !Number.isInteger(raw.id) || raw.id <= 0) return undefined
   const name = str(kind === 'series' ? raw.name : raw.title)
-  if (!name) throw new TmdbError('bad-response')
+  if (!name) return undefined
   return {
     id: raw.id,
     name,
@@ -70,6 +71,12 @@ function toTitle(raw: unknown, kind: 'series' | 'movie'): TmdbTitle {
     posterPath: str(raw.poster_path),
     backdropPath: str(raw.backdrop_path)
   }
+}
+
+function toTitle(raw: unknown, kind: 'series' | 'movie'): TmdbTitle {
+  const t = maybeTitle(raw, kind)
+  if (!t) throw new TmdbError('bad-response')
+  return t
 }
 
 export function createTmdbClient(opts: {
@@ -124,7 +131,8 @@ export function createTmdbClient(opts: {
       if (year !== undefined) params[kind === 'series' ? 'first_air_date_year' : 'year'] = String(year)
       const body = await get(`/search/${seg(kind)}`, params)
       if (!isObj(body) || !Array.isArray(body.results)) throw new TmdbError('bad-response')
-      return body.results.map((r) => toTitle(r, kind))
+      // um item malformado não invalida a lista: fica só o que dá para usar
+      return body.results.map((r) => maybeTitle(r, kind)).filter((t): t is TmdbTitle => t !== undefined)
     },
     async details(kind, id) {
       return toTitle(await get(`/${seg(kind)}/${id}`, { language: LANGUAGE }), kind)
@@ -132,15 +140,17 @@ export function createTmdbClient(opts: {
     async season(tvId, season) {
       const body = await get(`/tv/${tvId}/season/${season}`, { language: LANGUAGE })
       if (!isObj(body) || !Array.isArray(body.episodes)) throw new TmdbError('bad-response')
-      return body.episodes.map((e): TmdbEpisode => {
-        if (!isObj(e) || typeof e.episode_number !== 'number') throw new TmdbError('bad-response')
-        return {
+      const out: TmdbEpisode[] = []
+      for (const e of body.episodes) {
+        if (!isObj(e) || typeof e.episode_number !== 'number' || !Number.isInteger(e.episode_number)) continue // ignora o malformado
+        out.push({
           season: typeof e.season_number === 'number' ? e.season_number : season,
           episode: e.episode_number,
           name: str(e.name),
           overview: str(e.overview)
-        }
-      })
+        })
+      }
+      return out
     }
   }
 }

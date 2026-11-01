@@ -10,18 +10,19 @@ export function createKeyring(db: Db, cipher: Cipher, makeClient: (key: string) 
   client(): TmdbClient | null
   invalidate(): void
 } {
-  let cached: TmdbClient | null = null
+  // undefined = ainda não decifrado; null = há chave gravada, mas não deu para decifrar
+  let cached: TmdbClient | null | undefined
   return {
     client() {
-      if (cached) return cached
+      if (cached !== undefined) return cached
       if (!hasTmdbKey(db)) return null
       const key = loadTmdbKey(db, cipher)
-      if (key === null) return null
-      cached = makeClient(key)
+      // a falha também fica guardada até invalidate(): status() e as rodadas não decifram de novo a cada chamada
+      cached = key === null ? null : makeClient(key)
       return cached
     },
     invalidate() {
-      cached = null
+      cached = undefined
     }
   }
 }

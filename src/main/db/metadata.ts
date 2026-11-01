@@ -1,4 +1,5 @@
 import type { ParsedVideo, ReclassifyTarget } from '../../shared/types'
+import { slugify } from '../parser/keys'
 import type { Db } from './database'
 import { tx } from './database'
 
@@ -141,6 +142,32 @@ export function listMissingImages(db: Db): { id: number; kind: 'series' | 'movie
   return rows.map((r) => ({ id: r.id, kind: r.kind, tmdbId: r.tmdb_id }))
 }
 
+/**
+ * Esquece pôster/fundo cujo arquivo sumiu do cache (apagado à mão, pasta limpa): assim
+ * `listMissingImages` volta a incluir o título e a imagem é baixada de novo. Devolve os ids que mudaram.
+ */
+export function clearMissingImageFiles(db: Db, exists: (file: string) => boolean): number[] {
+  const rows = db
+    .prepare(
+      `SELECT t.id, t.poster_cache, t.backdrop_cache FROM titles t
+       WHERE t.tmdb_id IS NOT NULL AND (t.poster_cache IS NOT NULL OR t.backdrop_cache IS NOT NULL) AND ${HAS_FILE}`
+    )
+    .all() as { id: number; poster_cache: string | null; backdrop_cache: string | null }[]
+  const clear = db.prepare(
+    `UPDATE titles SET poster_cache = CASE WHEN ? THEN NULL ELSE poster_cache END,
+       backdrop_cache = CASE WHEN ? THEN NULL ELSE backdrop_cache END WHERE id = ?`
+  )
+  const ids: number[] = []
+  for (const r of rows) {
+    const poster = r.poster_cache !== null && !exists(r.poster_cache)
+    const backdrop = r.backdrop_cache !== null && !exists(r.backdrop_cache)
+    if (!poster && !backdrop) continue
+    clear.run(poster ? 1 : 0, backdrop ? 1 : 0, r.id)
+    ids.push(r.id)
+  }
+  return ids
+}
+
 /** Preenche só o que falta; não altera vínculo nem origem. */
 export function applyTitleImages(
   db: Db,
@@ -172,6 +199,21 @@ export function listUnmatched(db: Db): { libraryId: string; libraryLabel: string
     )
     .all(UNMATCHED_REASON) as { library_id: string; label: string; rel_path: string; reason: string }[]
   return rows.map((r) => ({ libraryId: r.library_id, libraryLabel: r.label, relPath: r.rel_path, reason: r.reason }))
+}
+
+/**
+ * Episódio atribuído a uma série que já existe (escolhida pelo id): o nome mostrado pode ser o do
+ * TMDB, que não reproduz a `local_key` (ela vem do nome original do arquivo). Troca o nome da série
+ * pelo slug da `local_key` existente (`slugify` é idempotente), para a varredura cair no mesmo título.
+ * Filme, id desconhecido ou que não é série: devolve o alvo como veio.
+ */
+export function targetForExistingSeries(db: Db, target: ReclassifyTarget, titleId: number | undefined): ReclassifyTarget {
+  if (target.kind !== 'episode' || titleId === undefined) return target
+  const row = db.prepare(`SELECT local_key FROM titles WHERE id = ? AND kind = 'series'`).get(titleId) as { local_key: string } | undefined
+  if (!row || !row.local_key.startsWith('series:')) return target
+  const slug = row.local_key.slice('series:'.length)
+  if (slug === '' || slugify(target.series) === slug) return target
+  return { ...target, series: slug }
 }
 
 export function setAssignment(db: Db, libraryId: string, relPath: string, target: ReclassifyTarget): void {

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { TmdbCandidate } from '../../../shared/types'
-import { assignError } from '../format'
+import { assignError, searchError } from '../format'
 
 interface Props {
   titleId: number
@@ -15,14 +15,35 @@ export function MatchDialog({ titleId, kind, initialQuery, onClose, onAssigned }
   const [results, setResults] = useState<TmdbCandidate[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // o listener de Escape precisa do valor atual sem se registrar de novo a cada mudança
+  const busyRef = useRef(false)
+  busyRef.current = busy
+
+  const close = () => {
+    if (!busyRef.current) onClose()
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busyRef.current) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   async function search() {
+    if (busy) return
     const q = query.trim()
     if (!q) return
     setBusy(true)
     setError(null)
     try {
-      setResults(await window.api.searchTmdb({ kind, query: q }))
+      const r = await window.api.searchTmdb({ kind, query: q })
+      if (r.ok) setResults(r.results)
+      else {
+        setResults(null)
+        setError(searchError(r.error))
+      }
     } catch {
       setResults(null)
       setError('Não foi possível buscar no TMDB. Verifique a chave em Configurações e a conexão.')
@@ -32,6 +53,7 @@ export function MatchDialog({ titleId, kind, initialQuery, onClose, onAssigned }
   }
 
   async function choose(tmdbId: number) {
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
@@ -49,7 +71,7 @@ export function MatchDialog({ titleId, kind, initialQuery, onClose, onAssigned }
   }
 
   return (
-    <div className="modal-bg" onClick={onClose}>
+    <div className="modal-bg" onClick={close}>
       <div className="modal" role="dialog" aria-label="Corrigir identificação" onClick={(e) => e.stopPropagation()}>
         <h2>Corrigir identificação</h2>
         <form
@@ -74,7 +96,7 @@ export function MatchDialog({ titleId, kind, initialQuery, onClose, onAssigned }
           </div>
         ))}
         <div className="actions">
-          <button onClick={onClose}>Cancelar</button>
+          <button onClick={close} disabled={busy}>Cancelar</button>
         </div>
       </div>
     </div>

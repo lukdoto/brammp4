@@ -25,7 +25,7 @@ export function Poster({ name, posterFile }: { name: string; posterFile?: string
   if (url && !failed) {
     return (
       <div className="poster has-image">
-        <img src={url} alt={name} loading="lazy" onError={() => setFailed(true)} />
+        <img src={url} alt="" loading="lazy" onError={() => setFailed(true)} />
       </div>
     )
   }

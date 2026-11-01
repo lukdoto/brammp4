@@ -101,6 +101,20 @@ describe('createTmdbClient', () => {
     expect(await c.search('series', 'nada')).toEqual([])
   })
 
+  it('item malformado no meio dos resultados é ignorado e os válidos permanecem', async () => {
+    const { c } = client([
+      { body: { results: [{ id: 1, name: 'A' }, { name: 'sem id' }, null, { id: 'x', name: 'id texto' }, { id: 3 }, { id: 4, name: '' }, { id: 2, name: 'B' }] } }
+    ])
+    const r = await c.search('series', 'a')
+    expect(r.map((t) => t.id)).toEqual([1, 2])
+  })
+
+  it('episódio malformado na temporada é ignorado e os válidos permanecem', async () => {
+    const { c } = client([{ body: { episodes: [{ episode_number: 1, name: 'Um' }, { name: 'sem número' }, 'lixo', { episode_number: 2 }] } }])
+    const eps = await c.season(1, 1)
+    expect(eps.map((e) => e.episode)).toEqual([1, 2])
+  })
+
   it('401 vira TmdbError invalid-key', async () => {
     const { c } = client([{ status: 401, body: { status_code: 7 } }])
     await expect(c.search('series', 'x')).rejects.toMatchObject({ name: 'TmdbError', code: 'invalid-key' })

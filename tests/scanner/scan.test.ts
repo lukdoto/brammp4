@@ -161,4 +161,35 @@ describe('atribuições manuais', () => {
     expect(keys).toContain('local:la-casa-de-papel:S03E01')
     expect(keys).toContain('local:la-casa-de-papel:S01E01')
   })
+
+  it('atribuir a série já identificada pelo TMDB reutiliza o título (mesma local_key)', async () => {
+    await scan()
+    const casa = repo.getCatalog(db).series[0]!
+    // o TMDB renomeou a série: o nome mostrado não reproduz mais a local_key
+    meta.applyTitleMatch(db, casa.id, { tmdbId: 71446, name: 'Money Heist', source: 'auto' })
+    const shown = repo.getCatalog(db).series[0]!
+    expect(shown.name).toBe('Money Heist')
+
+    const target = meta.targetForExistingSeries(db, { kind: 'episode', series: shown.name, season: 3, episode: 1 }, shown.id)
+    meta.setAssignment(db, 'lib1', UNMATCHED, target)
+    await scan()
+    const cat = repo.getCatalog(db)
+    expect(cat.series).toHaveLength(1)
+    expect(cat.series[0]).toMatchObject({ id: casa.id, name: 'Money Heist' })
+    const keys = repo.getTitleDetail(db, casa.id)!.items.map((i) => i.key)
+    expect(keys).toContain('local:la-casa-de-papel:S03E01')
+  })
+
+  it('targetForExistingSeries não mexe em filme, em nome que já bate nem em id que não é série', async () => {
+    await scan()
+    const casa = repo.getCatalog(db).series[0]!
+    const ep = { kind: 'episode' as const, series: 'La Casa de Papel', season: 1, episode: 9 }
+    expect(meta.targetForExistingSeries(db, ep, casa.id)).toEqual(ep)
+    expect(meta.targetForExistingSeries(db, { ...ep, series: 'Outra' }, undefined)).toEqual({ ...ep, series: 'Outra' })
+    expect(meta.targetForExistingSeries(db, { ...ep, series: 'Outra' }, 99999)).toEqual({ ...ep, series: 'Outra' })
+    const movie = repo.getCatalog(db).movies[0]
+    if (movie) expect(meta.targetForExistingSeries(db, { ...ep, series: 'Outra' }, movie.id)).toEqual({ ...ep, series: 'Outra' })
+    const film = { kind: 'movie' as const, title: 'X' }
+    expect(meta.targetForExistingSeries(db, film, casa.id)).toEqual(film)
+  })
 })

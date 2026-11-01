@@ -135,6 +135,55 @@ describe('createImageCache', () => {
     expect(readdirSync(dir)).toEqual([])
   })
 
+  it('content-length acima de 5 MB é recusado sem ler o corpo', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.enqueue(new Uint8Array(1024))
+      }
+    })
+    const cancel = vi.spyOn(body, 'cancel')
+    const fetchFn = async () =>
+      new Response(body, { status: 200, headers: { 'content-type': 'image/jpeg', 'content-length': String(50 * 1024 * 1024) } })
+    const cache = createImageCache({ dir, fetch: fetchFn as unknown as typeof fetch })
+    expect(await cache.ensure('w342', '/abc.jpg')).toBeUndefined()
+    expect(readdirSync(dir)).toEqual([])
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('corpo em stream que passa de 5 MB (sem content-length) é abortado e não deixa .tmp', async () => {
+    const chunk = new Uint8Array(1024 * 1024)
+    let sent = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        sent++
+        c.enqueue(chunk)
+        if (sent > 20) c.close()
+      }
+    })
+    const fetchFn = async () => new Response(body, { status: 200, headers: { 'content-type': 'image/jpeg' } })
+    const cache = createImageCache({ dir, fetch: fetchFn as unknown as typeof fetch })
+    expect(await cache.ensure('w342', '/abc.jpg')).toBeUndefined()
+    expect(readdirSync(dir)).toEqual([])
+    expect(sent).toBeLessThanOrEqual(8) // parou perto do limite, não leu os 21 MB
+  })
+
+  it('fetch recebe um AbortSignal (timeout)', async () => {
+    const fetchFn = vi.fn(async (_u: string, _init?: RequestInit) => imgResponse())
+    const cache = createImageCache({ dir, fetch: fetchFn as unknown as typeof fetch })
+    await cache.ensure('w342', '/abc.jpg')
+    expect(fetchFn.mock.calls[0]![1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('resposta não-ok ou que não é imagem tem o corpo cancelado', async () => {
+    for (const [status, type] of [[404, 'image/jpeg'], [200, 'text/html']] as const) {
+      const body = new ReadableStream<Uint8Array>({ pull: (c) => c.enqueue(new Uint8Array(1)) })
+      const cancel = vi.spyOn(body, 'cancel')
+      const cache = createImageCache({ dir, fetch: (async () => new Response(body, { status, headers: { 'content-type': type } })) as unknown as typeof fetch })
+      expect(await cache.ensure('w342', '/abc.jpg')).toBeUndefined()
+      expect(cancel).toHaveBeenCalled()
+    }
+  })
+
   it('caminho TMDB com .., barra extra ou extensão errada é rejeitado sem chamar fetch', async () => {
     const fetchFn = vi.fn(async () => imgResponse())
     const cache = createImageCache({ dir, fetch: fetchFn as unknown as typeof fetch })

@@ -1,4 +1,4 @@
-import type { AssignResult, AudioOption, ItemView, ProgressView, ReclassifyResult, SetKeyResult, SubOption } from '../../shared/types'
+import type { AssignResult, AudioOption, ItemView, ProgressView, ReclassifyResult, SetKeyResult, SubOption, TmdbSearchError } from '../../shared/types'
 
 export function resolutionLabel(height?: number): string | undefined {
   if (!height) return undefined
@@ -22,7 +22,7 @@ export function imageUrl(file: string | undefined): string | undefined {
   return file !== undefined && IMAGE_NAME.test(file) ? `brammp-img://img/${file}` : undefined
 }
 
-const pad =(n: number) => String(n).padStart(2, '0')
+const pad = (n: number) => String(n).padStart(2, '0')
 
 export function itemLabel(season: number | null, episode: number | null): string {
   return season === null || episode === null ? 'Filme' : `S${pad(season)}E${pad(episode)}`
@@ -121,5 +121,14 @@ export function assignError(e: Exclude<AssignResult, { ok: true }>['error']): st
     case 'bad-response': return 'O TMDB respondeu de um jeito inesperado. Tente de novo mais tarde.'
     case 'not-found': return 'Esse título não foi encontrado no TMDB. Escolha outro resultado.'
     case 'kind-mismatch': return 'Esse resultado é de outro tipo (filme no lugar de série, ou o contrário). Escolha outro.'
+  }
+}
+
+/** Falha da busca manual (diferente de "nenhum resultado"). */
+export function searchError(e: TmdbSearchError): string {
+  switch (e) {
+    case 'invalid': return 'Digite um nome com até 100 caracteres para buscar.'
+    case 'no-key': return 'Configure a chave do TMDB em Configurações para buscar.'
+    default: return assignError(e)
   }
 }

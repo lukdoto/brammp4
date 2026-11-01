@@ -56,6 +56,16 @@ describe('parseReclassifyRequest', () => {
     }
     expect(parseReclassifyRequest({ ...ep, relPath: 'a'.repeat(500) })).not.toBeNull()
   })
+  it('não apara relPath nem libraryId: o caminho é a chave do arquivo e precisa chegar como veio', () => {
+    expect(parseReclassifyRequest({ ...ep, relPath: ' Série/ep 1.mkv ', libraryId: ' lib1' })).toMatchObject({
+      libraryId: ' lib1', relPath: ' Série/ep 1.mkv '
+    })
+  })
+  it('titleId opcional: inteiro positivo ou recusa o pedido', () => {
+    expect(parseReclassifyRequest({ ...ep, titleId: 7 })).toMatchObject({ titleId: 7 })
+    expect(parseReclassifyRequest(ep)).not.toHaveProperty('titleId')
+    for (const v of [0, -1, 1.5, '7', null, NaN, Infinity]) expect(parseReclassifyRequest({ ...ep, titleId: v })).toBeNull()
+  })
   it('rejeita alvo inválido', () => {
     for (const t of [...notObjects, { kind: 'x' }, {}]) expect(parseReclassifyRequest({ ...ep, target: t })).toBeNull()
     for (const s of [undefined, 3, '', '   ', 'a'.repeat(201)]) {

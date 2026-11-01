@@ -116,6 +116,8 @@ export interface ContinueCard {
   positionS: number
   durationS?: number
   available: boolean
+  /** nome do arquivo no cache de imagens (ex.: w342-abc.jpg), não um caminho */
+  posterFile?: string
 }
 
 export interface AudioOption {
@@ -209,6 +211,9 @@ export interface TmdbCandidate {
   overview?: string
 }
 
+export type TmdbSearchError = 'invalid' | 'no-key' | 'network' | 'rate-limit' | 'invalid-key' | 'bad-response'
+export type TmdbSearchResult = { ok: true; results: TmdbCandidate[] } | { ok: false; error: TmdbSearchError }
+
 export type SetKeyResult = { ok: true } | { ok: false; error: 'invalid' | 'invalid-key' | 'network' | 'encryption-unavailable' }
 
 export type AssignResult =
@@ -240,9 +245,10 @@ export interface BrammApi {
   getTmdbStatus(): Promise<TmdbStatus>
   setTmdbKey(key: string): Promise<SetKeyResult>
   clearTmdbKey(): Promise<void>
-  searchTmdb(req: { kind: 'series' | 'movie'; query: string; year?: number }): Promise<TmdbCandidate[]>
+  searchTmdb(req: { kind: 'series' | 'movie'; query: string; year?: number }): Promise<TmdbSearchResult>
   assignTmdb(req: { titleId: number; tmdbId: number }): Promise<AssignResult>
   listUnmatched(): Promise<UnmatchedFile[]>
-  reclassify(req: { libraryId: string; relPath: string; target: ReclassifyTarget }): Promise<ReclassifyResult>
+  /** titleId: série já existente escolhida na lista; o main reaproveita esse título. */
+  reclassify(req: { libraryId: string; relPath: string; target: ReclassifyTarget; titleId?: number }): Promise<ReclassifyResult>
   onMetadataChanged(cb: () => void): () => void
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError, reclassifyError, parseEpisodeInput, parseYearInput } from '../../src/renderer/src/format'
+import { resolutionLabel, codecLabel, itemLabel, seasonsOf, plural, audioLabel, formatClock, langName, minutesLabel, progressRatio, subLabel, imageUrl, tmdbKeyError, assignError, searchError, reclassifyError, parseEpisodeInput, parseYearInput } from '../../src/renderer/src/format'
 
 describe('imageUrl', () => {
   it('imageUrl monta a URL do protocolo', () => {
@@ -121,5 +121,15 @@ describe('mensagens de erro do TMDB', () => {
   it('nenhuma mensagem contém a palavra "undefined"', () => {
     for (const c of keyCodes) expect(tmdbKeyError(c)).not.toContain('undefined')
     for (const c of assignCodes) expect(assignError(c)).not.toContain('undefined')
+  })
+  it('searchError cobre todos os códigos da busca, em português, sem "Nenhum resultado"', () => {
+    const searchCodes = ['invalid', 'no-key', 'network', 'rate-limit', 'invalid-key', 'bad-response'] as const
+    for (const c of searchCodes) {
+      expect(searchError(c).length).toBeGreaterThan(0)
+      expect(searchError(c)).not.toContain('undefined')
+      expect(searchError(c)).not.toMatch(/nenhum resultado/i)
+    }
+    expect(searchError('no-key')).toContain('Configurações')
+    expect(searchError('invalid')).not.toBe(assignError('invalid'))
   })
 })

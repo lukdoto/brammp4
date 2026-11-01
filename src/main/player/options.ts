@@ -75,7 +75,7 @@ export function buildFileOptions(db: Db, itemKey: string, titleId: number): File
 
 export function getPlayOptions(db: Db, itemKey: string): PlayOptions | null {
   const item = db.prepare(
-    `SELECT i.season, i.episode, i.name, i.title_id, t.name AS title_name, t.kind
+    `SELECT i.season, i.episode, COALESCE(i.tmdb_name, i.name) AS name, i.title_id, t.name AS title_name, t.kind
      FROM items i JOIN titles t ON t.id = i.title_id WHERE i.key = ?`
   ).get(itemKey) as unknown as
     | { season: number | null; episode: number | null; name: string | null; title_id: number; title_name: string; kind: 'series' | 'movie' }

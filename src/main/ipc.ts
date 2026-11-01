@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, type MessageBoxOptions } from 'electron'
 import { basename } from 'node:path'
-import type { AssignResult, PlayerState, PlayRequest, PlayResult, ReclassifyResult, ScanSummary, SetKeyResult, TmdbCandidate, TmdbStatus, UnmatchedFile } from '../shared/types'
+import type { AssignResult, PlayerState, PlayRequest, PlayResult, ReclassifyResult, ScanSummary, SetKeyResult, TmdbSearchResult, TmdbStatus, UnmatchedFile } from '../shared/types'
 import type { Db } from './db/database'
 import { listContinueWatching } from './db/progress'
 import * as metaDb from './db/metadata'
@@ -9,10 +9,11 @@ import { readMarker, writeMarker } from './libraries/marker'
 import { findOfflineTwin } from './libraries/twin'
 import { getPlayOptions } from './player/options'
 import { parsePlayRequest } from './player/request'
-import { parseAssignTmdbRequest, parseReclassifyRequest, parseSearchRequest } from './metadata/requests'
-import { setKeyError, toAssignResult, toCandidate } from './metadata/results'
+import { parseAssignTmdbRequest, parseReclassifyRequest } from './metadata/requests'
+import { runTmdbSearch, toAssignResult } from './metadata/results'
 import { clearTmdbKey, saveTmdbKey, type Cipher } from './metadata/secrets'
 import type { MetadataService } from './metadata/service'
+import { setTmdbKey } from './metadata/setkey'
 import { createTmdbClient } from './metadata/tmdb'
 
 export interface IpcContext {
@@ -83,40 +84,26 @@ export function registerIpc(ctx: IpcContext): void {
 
   ipcMain.handle('tmdb:status', (): TmdbStatus => ctx.metadata.status())
 
-  ipcMain.handle('tmdb:set-key', async (_e, raw: unknown): Promise<SetKeyResult> => {
-    const key = typeof raw === 'string' ? raw.trim() : ''
-    if (key === '' || key.length > 500) return { ok: false, error: 'invalid' }
-    // sem cifra não há como guardar: recusa antes de mandar a chave para a rede
-    if (!ctx.cipher.available()) return { ok: false, error: 'encryption-unavailable' }
-    try {
-      await createTmdbClient({ key }).validate()
-    } catch (e) {
-      return setKeyError(e)
-    }
-    try {
-      if (saveTmdbKey(ctx.db, ctx.cipher, key) === 'encryption-unavailable') return { ok: false, error: 'encryption-unavailable' }
-    } catch {
-      return { ok: false, error: 'encryption-unavailable' }
-    }
-    ctx.onKeyChanged()
-    ctx.metadata.sync().catch((err) => console.error('[metadata] sync falhou', err instanceof Error ? err.name : 'erro'))
-    return { ok: true }
-  })
+  ipcMain.handle('tmdb:set-key', (_e, raw: unknown): Promise<SetKeyResult> =>
+    setTmdbKey(raw, {
+      encryptionAvailable: () => ctx.cipher.available(),
+      validate: (key) => createTmdbClient({ key }).validate(),
+      save: (key) => saveTmdbKey(ctx.db, ctx.cipher, key),
+      onKeyChanged: ctx.onKeyChanged,
+      sync: () => {
+        ctx.metadata.sync().catch((err) => console.error('[metadata] sync falhou', err instanceof Error ? err.name : 'erro'))
+      }
+    })
+  )
 
   ipcMain.handle('tmdb:clear-key', () => {
     clearTmdbKey(ctx.db)
     ctx.onKeyChanged()
   })
 
-  ipcMain.handle('tmdb:search', async (_e, raw: unknown): Promise<TmdbCandidate[]> => {
-    const req = parseSearchRequest(raw)
-    if (!req) return []
-    try {
-      return (await ctx.metadata.search(req.kind, req.query, req.year)).map(toCandidate)
-    } catch {
-      return []
-    }
-  })
+  ipcMain.handle('tmdb:search', (_e, raw: unknown): Promise<TmdbSearchResult> =>
+    runTmdbSearch(raw, (kind, query, year) => ctx.metadata.search(kind, query, year))
+  )
 
   ipcMain.handle('tmdb:assign', async (_e, raw: unknown): Promise<AssignResult> => {
     const req = parseAssignTmdbRequest(raw)
@@ -138,7 +125,8 @@ export function registerIpc(ctx: IpcContext): void {
     if (!req) return { ok: false, error: 'invalid' }
     const lib = repo.listLibraries(ctx.db).find((l) => l.id === req.libraryId)
     if (!lib || lib.status !== 'online') return { ok: false, error: 'offline' }
-    metaDb.setAssignment(ctx.db, req.libraryId, req.relPath, req.target)
+    // série escolhida na lista: grava o nome que reproduz a local_key dela (o mostrado pode ser o do TMDB)
+    metaDb.setAssignment(ctx.db, req.libraryId, req.relPath, metaDb.targetForExistingSeries(ctx.db, req.target, req.titleId))
     try {
       await ctx.scan(req.libraryId)
     } catch (err) {

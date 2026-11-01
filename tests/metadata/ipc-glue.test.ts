@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { openDatabase } from '../../src/main/db/database'
 import { createKeyring } from '../../src/main/metadata/keyring'
-import { setKeyError, toAssignResult, toCandidate } from '../../src/main/metadata/results'
+import { runTmdbSearch, setKeyError, toAssignResult, toCandidate } from '../../src/main/metadata/results'
+import { MetadataService, NoKeyError } from '../../src/main/metadata/service'
 import { clearTmdbKey, saveTmdbKey, type Cipher } from '../../src/main/metadata/secrets'
 import { TmdbError, type TmdbClient } from '../../src/main/metadata/tmdb'
 
@@ -38,6 +39,43 @@ describe('toCandidate', () => {
   })
 })
 
+describe('runTmdbSearch', () => {
+  it('devolve candidatos com ok; lista vazia continua ok', async () => {
+    const search = vi.fn(async () => [{ id: 5, name: 'Dark', year: 2017 }])
+    expect(await runTmdbSearch({ kind: 'series', query: ' dark ' }, search)).toEqual({ ok: true, results: [{ tmdbId: 5, name: 'Dark', year: 2017 }] })
+    expect(search).toHaveBeenCalledWith('series', 'dark', undefined)
+    expect(await runTmdbSearch({ kind: 'movie', query: 'x' }, async () => [])).toEqual({ ok: true, results: [] })
+  })
+
+  it('pedido inválido não chama a busca', async () => {
+    const search = vi.fn(async () => [])
+    expect(await runTmdbSearch({ kind: 'outro', query: 'x' }, search)).toEqual({ ok: false, error: 'invalid' })
+    expect(search).not.toHaveBeenCalled()
+  })
+
+  it('sem chave, rede, limite, chave recusada e resposta ruim viram erro (não "nenhum resultado")', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const cases: [unknown, string][] = [
+      [new NoKeyError(), 'no-key'],
+      [new TmdbError('network'), 'network'],
+      [new TmdbError('rate-limit'), 'rate-limit'],
+      [new TmdbError('invalid-key'), 'invalid-key'],
+      [new TmdbError('bad-response'), 'bad-response'],
+      [new Error('https://x?api_key=SEGREDO'), 'network']
+    ]
+    for (const [err, code] of cases) {
+      expect(await runTmdbSearch({ kind: 'series', query: 'x' }, async () => Promise.reject(err))).toEqual({ ok: false, error: code })
+    }
+    expect(JSON.stringify(spy.mock.calls)).not.toContain('SEGREDO')
+    spy.mockRestore()
+  })
+
+  it('o serviço sem chave lança NoKeyError', async () => {
+    const svc = new MetadataService({ db: openDatabase(':memory:'), client: () => null, images: { ensure: async () => undefined }, now: () => new Date(), onChange: () => {} })
+    expect(await runTmdbSearch({ kind: 'series', query: 'x' }, (k, q, y) => svc.search(k, q, y))).toEqual({ ok: false, error: 'no-key' })
+  })
+})
+
 describe('keyring', () => {
   it('decifra uma vez, reaproveita o cliente e reflete set/clear após invalidate', () => {
     const db = openDatabase(':memory:')
@@ -57,5 +95,23 @@ describe('keyring', () => {
     clearTmdbKey(db)
     ring.invalidate()
     expect(ring.client()).toBeNull()
+  })
+
+  it('decifragem que falha também fica guardada até invalidate()', () => {
+    const db = openDatabase(':memory:')
+    const c = cipher()
+    saveTmdbKey(db, c, 'K1')
+    c.decrypt.mockImplementation(() => {
+      throw new Error('não decifra')
+    })
+    const make = vi.fn((k: string) => ({ key: k }) as unknown as TmdbClient)
+    const ring = createKeyring(db, c, make)
+    expect(ring.client()).toBeNull()
+    expect(ring.client()).toBeNull()
+    expect(c.decrypt).toHaveBeenCalledTimes(1)
+    c.decrypt.mockImplementation((b: Buffer) => b.toString('utf8').slice(4))
+    ring.invalidate()
+    expect(ring.client()).not.toBeNull()
+    expect(c.decrypt).toHaveBeenCalledTimes(2)
   })
 })

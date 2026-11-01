@@ -7,6 +7,8 @@ const NAME_RE = /^w(342|780)-[A-Za-z0-9_-]+\.jpg$/
 const TMDB_PATH_RE = /^\/([A-Za-z0-9_-]+\.jpg)$/
 const BASE = 'https://image.tmdb.org/t/p/'
 const TIMEOUT_MS = 15000
+/** Pôster w342/fundo w780 do TMDB têm centenas de KB; 5 MB é folga de sobra. */
+const MAX_BYTES = 5 * 1024 * 1024
 
 /** Nome de arquivo do cache: sem separadores, sem escapes, tamanho e extensão fixos. */
 export function isSafeImageName(name: string): boolean {
@@ -28,6 +30,39 @@ export interface ImageCache {
   ensure(size: ImageSize, tmdbPath: string): Promise<string | undefined>
 }
 
+/** Libera a conexão sem ler o corpo. */
+async function discard(res: Response): Promise<void> {
+  await res.body?.cancel().catch(() => undefined)
+}
+
+/** Lê o corpo em stream; undefined (e conexão cancelada) se passar de `max` bytes. */
+async function readLimited(res: Response, max: number): Promise<Uint8Array | undefined> {
+  if (!res.body) {
+    const buf = new Uint8Array(await res.arrayBuffer())
+    return buf.byteLength > max ? undefined : buf
+  }
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > max) {
+      await reader.cancel().catch(() => undefined)
+      return undefined
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(total)
+  let at = 0
+  for (const c of chunks) {
+    out.set(c, at)
+    at += c.byteLength
+  }
+  return out
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile()
@@ -47,10 +82,17 @@ export function createImageCache(opts: { dir: string; fetch?: typeof fetch }): I
       if (await exists(final)) return name
       await mkdir(opts.dir, { recursive: true })
       const res = await doFetch(`${BASE}${size}${tmdbPath}`, { signal: AbortSignal.timeout(TIMEOUT_MS) })
-      if (!res.ok) return undefined
-      if (!(res.headers.get('content-type') ?? '').toLowerCase().startsWith('image/')) return undefined
-      const bytes = new Uint8Array(await res.arrayBuffer())
-      if (bytes.byteLength === 0) return undefined
+      const declared = Number(res.headers.get('content-length') ?? NaN)
+      if (
+        !res.ok ||
+        !(res.headers.get('content-type') ?? '').toLowerCase().startsWith('image/') ||
+        (Number.isFinite(declared) && declared > MAX_BYTES)
+      ) {
+        await discard(res)
+        return undefined
+      }
+      const bytes = await readLimited(res, MAX_BYTES)
+      if (!bytes || bytes.byteLength === 0) return undefined
       await writeFile(tmp, bytes)
       await rename(tmp, final)
       return name

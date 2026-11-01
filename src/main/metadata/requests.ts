@@ -11,6 +11,12 @@ function str(v: unknown, max: number): string | null {
   return s.length >= 1 && s.length <= max ? s : null
 }
 
+/** Identificador (caminho, id): valida vazio e tamanho mas devolve exatamente o que veio. */
+function ident(v: unknown, max: number): string | null {
+  if (typeof v !== 'string') return null
+  return v.trim().length >= 1 && v.length <= max ? v : null
+}
+
 function int(v: unknown, min: number, max: number): number | null {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : null
 }
@@ -36,25 +42,40 @@ export function parseAssignTmdbRequest(raw: unknown): { titleId: number; tmdbId:
   return titleId === null || tmdbId === null ? null : { titleId, tmdbId }
 }
 
-export function parseReclassifyRequest(raw: unknown): { libraryId: string; relPath: string; target: ReclassifyTarget } | null {
-  if (!isObj(raw)) return null
-  const libraryId = str(raw.libraryId, 500)
-  const relPath = str(raw.relPath, 500)
-  if (libraryId === null || relPath === null || !isObj(raw.target)) return null
-  const t = raw.target
+export interface ReclassifyRequest {
+  libraryId: string
+  relPath: string
+  target: ReclassifyTarget
+  /** Série existente escolhida na lista (para reaproveitar o título já identificado). */
+  titleId?: number
+}
+
+function parseTarget(t: Obj): ReclassifyTarget | null {
   if (t.kind === 'movie') {
     const title = str(t.title, 200)
     if (title === null) return null
-    if (t.year === undefined) return { libraryId, relPath, target: { kind: 'movie', title } }
+    if (t.year === undefined) return { kind: 'movie', title }
     const year = int(t.year, YEAR_MIN, YEAR_MAX)
-    return year === null ? null : { libraryId, relPath, target: { kind: 'movie', title, year } }
+    return year === null ? null : { kind: 'movie', title, year }
   }
   if (t.kind === 'episode') {
     const series = str(t.series, 200)
     const season = int(t.season, 0, 200)
     const episode = int(t.episode, 1, 9999)
     if (series === null || season === null || episode === null) return null
-    return { libraryId, relPath, target: { kind: 'episode', series, season, episode } }
+    return { kind: 'episode', series, season, episode }
   }
   return null
+}
+
+export function parseReclassifyRequest(raw: unknown): ReclassifyRequest | null {
+  if (!isObj(raw)) return null
+  const libraryId = ident(raw.libraryId, 500)
+  const relPath = ident(raw.relPath, 500)
+  if (libraryId === null || relPath === null || !isObj(raw.target)) return null
+  const target = parseTarget(raw.target)
+  if (target === null) return null
+  if (raw.titleId === undefined) return { libraryId, relPath, target }
+  const titleId = int(raw.titleId, 1, Number.MAX_SAFE_INTEGER)
+  return titleId === null ? null : { libraryId, relPath, target, titleId }
 }

@@ -131,6 +131,155 @@ describe('sync', () => {
     expect(titleRow(db, titleId).tmdb_checked_at).toBeNull()
   })
 
+  it('busca com bad-response num título não impede identificar os seguintes', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { db, titleId } = seedSeries()
+    const dune = seedMovie(db, 'Dune', 2021)
+    const search = vi.fn(async (kind: string) => {
+      if (kind === 'series') throw new TmdbError('bad-response')
+      return [{ id: 438631, name: 'Duna', year: 2021 }]
+    })
+    const { svc } = make(db, fakeClient({ search }), fakeImages(), { retryMs: 1000 })
+    svc.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(titleRow(db, dune.titleId).tmdb_id).toBe(438631)
+    // sem marcar verificado: na próxima execução do app tenta de novo
+    expect(titleRow(db, titleId).tmdb_checked_at).toBeNull()
+    expect(titleRow(db, titleId).tmdb_id).toBeNull()
+    // na mesma execução não repete o título problemático
+    await vi.advanceTimersByTimeAsync(5000)
+    await svc.sync()
+    expect(search.mock.calls.filter((c) => c[0] === 'series')).toHaveLength(1)
+    svc.stop()
+  })
+
+  it('sync pedido durante uma rodada roda de novo ao terminar', async () => {
+    const { db } = seedSeries()
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const search = vi.fn(async (kind: string) => {
+      if (kind === 'series') await gate
+      return kind === 'series' ? [dark] : [{ id: 438631, name: 'Duna', year: 2021 }]
+    })
+    const { svc } = make(db, fakeClient({ search }))
+    const first = svc.sync()
+    await vi.waitFor(() => expect(search).toHaveBeenCalledTimes(1))
+    const dune = seedMovie(db, 'Dune', 2021) // chegou pelo scan no meio da rodada
+    const second = svc.sync()
+    release()
+    await Promise.all([first, second])
+    expect(titleRow(db, dune.titleId).tmdb_id).toBe(438631)
+    expect(svc.status().syncing).toBe(false)
+  })
+
+  it('chave apagada no meio da rodada: nenhuma requisição nova com a chave antiga', async () => {
+    const { db, titleId } = seedSeries()
+    seedMovie(db, 'Dune', 2021)
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const client = fakeClient({
+      search: vi.fn(async () => {
+        await gate
+        return [dark]
+      })
+    })
+    let current: TmdbClient | null = client
+    const svc = new MetadataService({ db, client: () => current, images: fakeImages(), now: () => NOW, onChange: vi.fn() })
+    const syncing = svc.sync()
+    await vi.waitFor(() => expect(client.search).toHaveBeenCalledTimes(1))
+    current = null
+    svc.keyChanged()
+    release()
+    await syncing
+    expect(client.search).toHaveBeenCalledTimes(1)
+    expect(client.season).not.toHaveBeenCalled()
+    expect(client.details).not.toHaveBeenCalled()
+    expect(titleRow(db, titleId).tmdb_checked_at).toBeNull()
+  })
+
+  it('chave trocada no meio da rodada: continua com a chave nova', async () => {
+    const { db } = seedSeries()
+    const dune = seedMovie(db, 'Dune', 2021)
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const old = fakeClient({
+      search: vi.fn(async () => {
+        await gate
+        return [dark]
+      })
+    })
+    const fresh = fakeClient({ search: vi.fn(async () => [{ id: 438631, name: 'Duna', year: 2021 }]) })
+    let current: TmdbClient = old
+    const svc = new MetadataService({ db, client: () => current, images: fakeImages(), now: () => NOW, onChange: vi.fn() })
+    const syncing = svc.sync()
+    await vi.waitFor(() => expect(old.search).toHaveBeenCalledTimes(1))
+    current = fresh
+    svc.keyChanged()
+    release()
+    await syncing
+    expect(old.search).toHaveBeenCalledTimes(1)
+    expect(old.season).not.toHaveBeenCalled()
+    expect(fresh.search).toHaveBeenCalledWith('movie', 'Dune', 2021)
+    expect(titleRow(db, dune.titleId).tmdb_id).toBe(438631)
+  })
+
+  it('sync depois de stop() não faz nada', async () => {
+    const { db } = seedSeries()
+    const client = fakeClient()
+    const { svc } = make(db, client)
+    svc.stop()
+    await svc.sync()
+    expect(client.search).not.toHaveBeenCalled()
+  })
+
+  it('stop() no meio da rodada não faz novas requisições', async () => {
+    const { db } = seedSeries()
+    seedMovie(db, 'Dune', 2021)
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const client = fakeClient({
+      search: vi.fn(async () => {
+        await gate
+        return [dark]
+      })
+    })
+    const { svc } = make(db, client)
+    svc.start()
+    await vi.waitFor(() => expect(client.search).toHaveBeenCalledTimes(1))
+    svc.stop()
+    release()
+    await vi.waitFor(() => expect(svc.status().syncing).toBe(false))
+    expect(client.search).toHaveBeenCalledTimes(1)
+    expect(client.season).not.toHaveBeenCalled()
+  })
+
+  it('arquivo de imagem apagado do cache é baixado de novo', async () => {
+    const { db, titleId } = seedSeries()
+    meta.applyTitleMatch(db, titleId, { tmdbId: 70523, name: 'Dark', posterFile: 'w342-velho.jpg', backdropFile: 'w780-b.jpg', source: 'auto' })
+    const images = fakeImages()
+    const client = fakeClient()
+    const svc = new MetadataService({
+      db,
+      client: () => client,
+      images,
+      now: () => NOW,
+      onChange: vi.fn(),
+      imageExists: (f) => f !== 'w342-velho.jpg'
+    })
+    await svc.sync()
+    expect(client.details).toHaveBeenCalledWith('series', 70523)
+    expect(titleRow(db, titleId)).toMatchObject({ poster_cache: 'w342-p.jpg', backdrop_cache: 'w780-b.jpg' })
+  })
+
   it('sem resultados: marca verificado e não repete na mesma semana', async () => {
     const { db, titleId } = seedSeries()
     const search = vi.fn(async () => [])
