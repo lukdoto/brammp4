@@ -190,3 +190,70 @@ describe('getTitleForAssign', () => {
     expect(meta.getTitleForAssign(db, titleId)).toEqual({ kind: 'series' })
   })
 })
+
+describe('atribuições e não identificados', () => {
+  const epTarget = { kind: 'episode', series: 'Dark', season: 2, episode: 5 } as const
+
+  it('setAssignment grava, substitui por (biblioteca, caminho) e listAssignments devolve o mapa', () => {
+    const { db } = seedSeries()
+    meta.setAssignment(db, 'lib1', 'x/a.mkv', epTarget)
+    meta.setAssignment(db, 'lib1', 'x/b.mkv', { kind: 'movie', title: 'Dune', year: 2021 })
+    meta.setAssignment(db, 'lib1', 'x/a.mkv', { kind: 'movie', title: 'Outro' })
+    const m = meta.listAssignments(db, 'lib1')
+    expect(m.size).toBe(2)
+    expect(m.get('x/a.mkv')).toEqual({ kind: 'movie', title: 'Outro' })
+    expect(m.get('x/b.mkv')).toEqual({ kind: 'movie', title: 'Dune', year: 2021 })
+    expect(meta.listAssignments(db, 'outra').size).toBe(0)
+  })
+
+  it('listAssignments ignora linha corrompida', () => {
+    const { db } = seedSeries()
+    db.prepare('INSERT INTO assignments (library_id, rel_path, target) VALUES (?, ?, ?)').run('lib1', 'ruim.mkv', '{nao-json')
+    db.prepare('INSERT INTO assignments (library_id, rel_path, target) VALUES (?, ?, ?)').run('lib1', 'ruim2.mkv', '{"kind":"x"}')
+    meta.setAssignment(db, 'lib1', 'ok.mkv', epTarget)
+    expect([...meta.listAssignments(db, 'lib1').keys()]).toEqual(['ok.mkv'])
+  })
+
+  it('a chave primária é (library_id, rel_path): mesmo caminho em outra biblioteca coexiste', () => {
+    const { db } = seedSeries()
+    repo.upsertLibrary(db, { id: 'lib2', label: 'HD 2', rootPath: 'F:\\' })
+    meta.setAssignment(db, 'lib1', 'x.mkv', epTarget)
+    meta.setAssignment(db, 'lib2', 'x.mkv', { kind: 'movie', title: 'Heat' })
+    meta.setAssignment(db, 'lib1', 'x.mkv', { kind: 'movie', title: 'Dune' })
+    const n = db.prepare('SELECT COUNT(*) AS n FROM assignments').get() as { n: number }
+    expect(n.n).toBe(2)
+    expect(meta.listAssignments(db, 'lib2').get('x.mkv')).toEqual({ kind: 'movie', title: 'Heat' })
+  })
+
+  it('ON DELETE CASCADE: apagar a biblioteca apaga as atribuições', () => {
+    const { db } = seedSeries()
+    repo.upsertLibrary(db, { id: 'lib2', label: 'HD 2', rootPath: 'F:\\' })
+    meta.setAssignment(db, 'lib1', 'x.mkv', epTarget)
+    meta.setAssignment(db, 'lib2', 'y.mkv', epTarget)
+    db.prepare('DELETE FROM libraries WHERE id = ?').run('lib1')
+    expect(meta.listAssignments(db, 'lib1').size).toBe(0)
+    expect(meta.listAssignments(db, 'lib2').size).toBe(1)
+  })
+
+  it('listUnmatched devolve só "nome não reconhecido", com rótulo da biblioteca, ordenado', () => {
+    const { db } = seedSeries()
+    repo.upsertLibrary(db, { id: 'lib2', label: 'Backup', rootPath: 'F:\\' })
+    repo.replaceUnmatched(db, 'lib1', [
+      { relPath: 'b.mkv', reason: 'nome não reconhecido' },
+      { relPath: 'a.mkv', reason: 'nome não reconhecido' },
+      { relPath: 'l.srt', reason: 'legenda sem vídeo correspondente' }
+    ])
+    repo.replaceUnmatched(db, 'lib2', [{ relPath: 'c.mkv', reason: 'nome não reconhecido' }])
+    expect(meta.listUnmatched(db)).toEqual([
+      { libraryId: 'lib2', libraryLabel: 'Backup', relPath: 'c.mkv', reason: 'nome não reconhecido' },
+      { libraryId: 'lib1', libraryLabel: 'HD Séries', relPath: 'a.mkv', reason: 'nome não reconhecido' },
+      { libraryId: 'lib1', libraryLabel: 'HD Séries', relPath: 'b.mkv', reason: 'nome não reconhecido' }
+    ])
+  })
+
+  it('reclassifyToParsed converte filme e episódio', () => {
+    expect(meta.reclassifyToParsed({ kind: 'movie', title: 'Dune', year: 2021 })).toEqual({ kind: 'movie', title: 'Dune', year: 2021 })
+    expect(meta.reclassifyToParsed({ kind: 'movie', title: 'Dune' })).toEqual({ kind: 'movie', title: 'Dune' })
+    expect(meta.reclassifyToParsed(epTarget)).toEqual({ kind: 'episode', seriesName: 'Dark', season: 2, episodes: [5] })
+  })
+})

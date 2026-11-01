@@ -3,6 +3,7 @@ import type { ProbeResult, ScanProgress, ScanSummary } from '../../shared/types'
 import type { Db } from '../db/database'
 import { tx } from '../db/database'
 import * as repo from '../db/repo'
+import * as meta from '../db/metadata'
 import { parseVideoPath, extOf } from '../parser/video'
 import { titleOf, itemsOf, episodeCodesOf } from '../parser/keys'
 import { parseSubtitlePath, matchSubtitles } from '../parser/subtitle'
@@ -43,7 +44,11 @@ export async function scanLibrary(lib: { id: string; rootPath: string }, deps: S
   }
 
   const existing = new Map(repo.listLibraryFiles(db, lib.id).map((f) => [`${f.relPath}|${f.itemKey}`, f]))
-  const parsed = walked.videos.map((v) => ({ ...v, parsed: parseVideoPath(v.relPath) }))
+  const assignments = meta.listAssignments(db, lib.id)
+  const parsed = walked.videos.map((v) => {
+    const manual = assignments.get(v.relPath)
+    return { ...v, parsed: manual ? meta.reclassifyToParsed(manual) : parseVideoPath(v.relPath) }
+  })
   const recognized = parsed.filter((v) => v.parsed !== null)
   const unmatchedVideos = parsed.filter((v) => v.parsed === null).map((v) => ({ relPath: v.relPath, reason: 'nome não reconhecido' }))
 

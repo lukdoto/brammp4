@@ -1,3 +1,4 @@
+import type { ParsedVideo, ReclassifyTarget } from '../../shared/types'
 import type { Db } from './database'
 import { tx } from './database'
 
@@ -158,4 +159,57 @@ export function listLinkedSeries(db: Db): { id: number; tmdbId: number }[] {
     .prepare(`SELECT t.id, t.tmdb_id FROM titles t WHERE t.kind = 'series' AND t.tmdb_id IS NOT NULL AND ${HAS_FILE} ORDER BY t.id`)
     .all() as { id: number; tmdb_id: number }[]
   return rows.map((r) => ({ id: r.id, tmdbId: r.tmdb_id }))
+}
+
+export const UNMATCHED_REASON = 'nome não reconhecido'
+
+/** Vídeos que o parser não classificou (legendas órfãs ficam de fora), em ordem estável. */
+export function listUnmatched(db: Db): { libraryId: string; libraryLabel: string; relPath: string; reason: string }[] {
+  const rows = db
+    .prepare(
+      `SELECT u.library_id, l.label, u.rel_path, u.reason FROM unmatched u JOIN libraries l ON l.id = u.library_id
+       WHERE u.reason = ? ORDER BY l.label, u.library_id, u.rel_path`
+    )
+    .all(UNMATCHED_REASON) as { library_id: string; label: string; rel_path: string; reason: string }[]
+  return rows.map((r) => ({ libraryId: r.library_id, libraryLabel: r.label, relPath: r.rel_path, reason: r.reason }))
+}
+
+export function setAssignment(db: Db, libraryId: string, relPath: string, target: ReclassifyTarget): void {
+  db.prepare(
+    `INSERT INTO assignments (library_id, rel_path, target) VALUES (?, ?, ?)
+     ON CONFLICT(library_id, rel_path) DO UPDATE SET target = excluded.target`
+  ).run(libraryId, relPath, JSON.stringify(target))
+}
+
+function isTarget(v: unknown): v is ReclassifyTarget {
+  if (typeof v !== 'object' || v === null) return false
+  const t = v as Record<string, unknown>
+  if (t.kind === 'movie') return typeof t.title === 'string' && t.title.trim() !== '' && (t.year === undefined || Number.isInteger(t.year))
+  if (t.kind === 'episode') {
+    return typeof t.series === 'string' && t.series.trim() !== '' && Number.isInteger(t.season) && Number.isInteger(t.episode)
+  }
+  return false
+}
+
+/** Linhas corrompidas são ignoradas: uma atribuição ruim não pode travar a varredura. */
+export function listAssignments(db: Db, libraryId: string): Map<string, ReclassifyTarget> {
+  const rows = db.prepare('SELECT rel_path, target FROM assignments WHERE library_id = ?').all(libraryId) as {
+    rel_path: string
+    target: string
+  }[]
+  const out = new Map<string, ReclassifyTarget>()
+  for (const r of rows) {
+    try {
+      const t: unknown = JSON.parse(r.target)
+      if (isTarget(t)) out.set(r.rel_path, t)
+    } catch {
+      /* ignora */
+    }
+  }
+  return out
+}
+
+export function reclassifyToParsed(t: ReclassifyTarget): ParsedVideo {
+  if (t.kind === 'movie') return { kind: 'movie', title: t.title, ...(t.year === undefined ? {} : { year: t.year }) }
+  return { kind: 'episode', seriesName: t.series, season: t.season, episodes: [t.episode] }
 }
